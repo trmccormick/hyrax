@@ -2,11 +2,11 @@ apiVersion: v2
 name: hyrax
 description: An open-source, Samvera-powered digital repository system
 type: application
-version: 0.4.1
+version: 0.4.2
 appVersion: 3.0.0-rc2
 dependencies:
   - name: fcrepo
-    version: 0.4.1
+    version: 0.4.2
     repository: file://../fcrepo
   - name: memcached
     version: 4.2.21
@@ -22,6 +22,6 @@ dependencies:
     condition: redis.enabled
   - name: solr
     version: 1.5.2
-    repository: http://storage.googleapis.com/kubernetes-charts-incubator
+    repository: https://lib-helm-repo.ucsd.edu
     condition: solr.enabled
   # need something for fcrepo

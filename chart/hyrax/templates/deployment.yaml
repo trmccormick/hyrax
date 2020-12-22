@@ -21,6 +21,22 @@ spec:
         {{- include "hyrax.selectorLabels" . | nindent 8 }}
     spec:
       initContainers:
+        - name: solr-config-upload
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          envFrom:
+            - configMapRef:
+                name: {{ include "hyrax.fullname" . }}-env
+            - secretRef:
+                name: {{ template "hyrax.fullname" . }}
+          command:
+            - sh
+            - -c
+            - >
+              cd solr/conf;
+              db-wait.sh "$SOLR_HOST:$SOLR_PORT" zip -r - * |
+              curl -X POST --header "Content-Type:application/octet-stream" --data-binary @- "http://$SOLR_HOST:$SOLR_PORT/solr/admin/configs?action=UPLOAD&name=hyrax";
+              curl -X POST "http://$SOLR_HOST:$SOLR_PORT/solr/admin/collections?action=CREATE&name=hyrax&collection.configName=hyrax&numShards=1&replicationFactor=1"
         - name: db-setup
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
