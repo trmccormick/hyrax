@@ -30,9 +30,7 @@ module Hyrax
     end
 
     def models_to_solr_clause
-      models.map do |model|
-        model.respond_to?(:to_rdf_representation) ? model.to_rdf_representation : model.name
-      end.join(',')
+      Hyrax::ModelRegistry.rdf_representations_from(models).join(',')
     end
 
     def generic_type_field
@@ -43,7 +41,7 @@ module Hyrax
     # types from appearing in search results
     # @return [Array<Class>] the list of work types to include in searches
     def work_types
-      Hyrax.config.curation_concerns
+      Hyrax::ModelRegistry.work_classes
     end
 
     def work_classes
@@ -53,7 +51,8 @@ module Hyrax
 
     def collection_classes
       return [] if only_works?
-      [::Collection, Hyrax.config.collection_class].uniq
+
+      Hyrax::ModelRegistry.collection_classes
     end
   end
 end

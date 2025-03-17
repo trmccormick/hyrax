@@ -9,7 +9,7 @@ module Hyrax
       if options[:verbose]
         stdout_logger = Logger.new(STDOUT)
         stdout_logger.level = Logger::INFO
-        Rails.logger.extend(ActiveSupport::Logger.broadcast(stdout_logger))
+        Hyrax.logger.extend(ActiveSupport::Logger.broadcast(stdout_logger))
       end
       @logging = options[:logging]
       @delay_secs = options[:delay_secs].to_f
@@ -49,7 +49,7 @@ module Hyrax
 
     def process_files(stats, user, start_date)
       file_ids_for_user(user).each do |file_id|
-        file = ::FileSet.find(file_id)
+        file = Hyrax.query_service.find_by(id: file_id)
         view_stats = extract_stats_for(object: file, from: FileViewStat, start_date: start_date, user: user)
         stats = tally_results(view_stats, :views, stats) if view_stats.present?
         delay
@@ -61,7 +61,7 @@ module Hyrax
 
     def process_works(stats, user, start_date)
       work_ids_for_user(user).each do |work_id|
-        work = Hyrax::WorkRelation.new.find(work_id)
+        work = Hyrax.query_service.find_by(id: work_id)
         work_stats = extract_stats_for(object: work, from: WorkViewStat, start_date: start_date, user: user)
         stats = tally_results(work_stats, :work_views, stats) if work_stats.present?
         delay
@@ -84,6 +84,8 @@ module Hyrax
     rescue StandardError => exception
       log_message fail_message
       log_message "Last exception #{exception}"
+      # Without returning false, we return the results of log_message; which is true.
+      false
     end
 
     def date_since_last_cache(user)
@@ -92,7 +94,7 @@ module Hyrax
       if last_cached_stat
         last_cached_stat.date + 1.day
       else
-        Hyrax.config.analytic_start_date
+        Hyrax.config.analytic_start_date || 1.week.ago
       end
     end
 
@@ -106,8 +108,8 @@ module Hyrax
 
     def work_ids_for_user(user)
       ids = []
-      Hyrax::WorkRelation.new.search_in_batches("#{depositor_field}:\"#{user.user_key}\"", fl: "id") do |group|
-        ids.concat group.map { |doc| doc["id"] }
+      Hyrax::SolrService.query_in_batches("#{depositor_field}:\"#{user.user_key}\"", fl: "id") do |hit|
+        ids << hit.id
       end
       ids
     end
@@ -122,7 +124,7 @@ module Hyrax
 
         date_key = stats.date.to_s
         old_count = total_stats[date_key] ? total_stats[date_key].fetch(stat_name) { 0 } : 0
-        new_count = old_count + stats.method(stat_name).call
+        new_count = old_count + stats.method(stat_name).call.to_i
 
         old_values = total_stats[date_key] || {}
         total_stats.store(date_key, old_values)
@@ -145,7 +147,7 @@ module Hyrax
     end
 
     def log_message(message)
-      Rails.logger.info "#{self.class}: #{message}" if @logging
+      Hyrax.logger.info "#{self.class}: #{message}" if @logging
     end
 
     def retry_options

@@ -28,7 +28,7 @@ module Hyrax
     # @return [Array<FileSetPresenter, WorkShowPresenter>]
     # @return [Enumerator<FileSetPresenter>]
     def file_set_presenters
-      return enum_for(:file_set_presenters) unless block_given?
+      return enum_for(:file_set_presenters).to_a unless block_given?
 
       results = query_docs(generic_type: "FileSet")
 
@@ -47,21 +47,21 @@ module Hyrax
     #   we recommend making sparing use of this feature.
     #
     # @overload member_presenters
-    #   @return [Enumerator<FileSetPresenter, WorkShowPresenter>]
+    #   @return [Array<FileSetPresenter, WorkShowPresenter>]
     #   @raise [ArgumentError] if an unindexed id is passed
     # @overload member_presenters
     #   @param [Array<#to_s>] ids
-    #   @return [Enumerator<FileSetPresenter, WorkShowPresenter>]
+    #   @return [Array<FileSetPresenter, WorkShowPresenter>]
     #   @raise [ArgumentError] if an unindexed id is passed
     def member_presenters(ids = object.member_ids)
-      return enum_for(:member_presenters, ids) unless block_given?
+      return enum_for(:member_presenters, ids).to_a unless block_given?
 
       results = query_docs(ids: ids)
 
       ids.each do |id|
         id = id.to_s
         indx = results.index { |doc| id == doc['id'] }
-        raise(ArgumentError, "Could not find an indexed document for id: #{id}") if
+        raise(Hyrax::ObjectNotFoundError, "Could not find an indexed document for id: #{id}") if
           indx.nil?
         hash = results.delete_at(indx)
         yield presenter_for(document: ::SolrDocument.new(hash), ability: ability)
@@ -97,10 +97,10 @@ module Hyrax
     # @return
     def presenter_for(document:, ability:)
       case document['has_model_ssim'].first
-      when Hyrax::FileSet.name, ::FileSet.name # ActiveFedora FileSet within a Valkyrie Resource
-        Hyrax::FileSetPresenter.new(document, ability)
+      when *Hyrax::ModelRegistry.file_set_rdf_representations
+        file_presenter_class.new(document, ability)
       else
-        Hyrax::WorkShowPresenter.new(document, ability)
+        work_presenter_class.new(document, ability)
       end
     end
 
@@ -109,6 +109,8 @@ module Hyrax
     def query_docs(generic_type: nil, ids: object.member_ids)
       query = "{!terms f=id}#{ids.join(',')}"
       query += "{!term f=generic_type_si}#{generic_type}" if generic_type
+      # works created via ActiveFedora use the _sim field
+      query += "{!term f=generic_type_sim}#{generic_type}" if generic_type
 
       Hyrax::SolrService
         .post(q: query, rows: 10_000)

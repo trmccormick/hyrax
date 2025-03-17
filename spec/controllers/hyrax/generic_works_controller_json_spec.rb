@@ -1,7 +1,6 @@
 # frozen_string_literal: true
 # This tests the Hyrax::WorksControllerBehavior module
-# which is included into .internal_test_app/app/controllers/hyrax/generic_works_controller.rb
-RSpec.describe Hyrax::GenericWorksController do
+RSpec.describe Hyrax::GenericWorksController, :active_fedora do
   routes { Rails.application.routes }
 
   let(:user) { create(:user) }
@@ -55,9 +54,14 @@ RSpec.describe Hyrax::GenericWorksController do
     # The clean is here because this test depends on the repo not having an AdminSet/PermissionTemplate created yet
     describe 'failed create', :clean_repo do
       before { post :create, params: { generic_work: {}, format: :json } }
-      it "returns 422 and the errors" do
-        created_resource = assigns[:curation_concern]
-        expect(response).to respond_unprocessable_entity(errors: created_resource.errors.messages.as_json)
+
+      it 'returns 422 and the errors' do
+        # NOTE: this passes in all four 2.7/valkyrie and 3.2/valkyrie pipelines, but does not pass locally in koppie
+        # because Hyrax::WorksControllerBehavior#form_err_msg doesn't return the same type of message that
+        # Hyrax::WorksControllerBehavior#create does
+        resource = assigns[:curation_concern].respond_to?(:errors) ? assigns[:curation_concern] : assigns[:form]
+        expect(response.code).to eq '422'
+        expect(response).to respond_unprocessable_entity(errors: resource.errors.messages.as_json)
       end
     end
 

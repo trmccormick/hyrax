@@ -12,14 +12,12 @@ RSpec.describe Hyrax::WorkBehavior do
   subject { EssentialWork.new }
 
   it 'mixes together some junk' do
-    expect(subject.class.ancestors).to include(::Hyrax::WithFileSets,
-                                               ::Hyrax::HumanReadableType,
+    expect(subject.class.ancestors).to include(::Hyrax::HumanReadableType,
                                                Hyrax::Noid,
                                                Hyrax::Serializers,
                                                Hydra::WithDepositor,
                                                Hydra::AccessControls::Embargoable,
-                                               Hyrax::Suppressible,
-                                               Hyrax::CollectionNesting)
+                                               Hyrax::Suppressible)
   end
 
   describe '#to_s' do
@@ -47,13 +45,6 @@ RSpec.describe Hyrax::WorkBehavior do
     it 'is settable' do
       EssentialWork.indexer = klass
       expect(EssentialWork.indexer).to eq klass
-    end
-  end
-
-  describe '#update_nested_collection_relationship_indices', :with_nested_reindexing do
-    it 'will be called after save' do
-      expect(Samvera::NestingIndexer).to receive(:reindex_relationships).with(id: kind_of(String), extent: kind_of(String))
-      subject.save!
     end
   end
 end

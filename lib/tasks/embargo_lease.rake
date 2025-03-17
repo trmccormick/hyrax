@@ -8,6 +8,7 @@ namespace :hyrax do
 
       Hyrax.query_service.find_many_by_ids(ids: ids).each do |resource|
         Hyrax::EmbargoManager.release_embargo_for(resource: resource) &&
+          Hyrax.persister.save(resource: resource.embargo) &&
           Hyrax::AccessControlList(resource).save
       end
     end
@@ -20,6 +21,7 @@ namespace :hyrax do
 
       Hyrax.query_service.find_many_by_ids(ids: ids).each do |resource|
         Hyrax::LeaseManager.release_lease_for(resource: resource) &&
+          Hyrax.persister.save(resource: resource.lease) &&
           Hyrax::AccessControlList(resource).save
       end
     end

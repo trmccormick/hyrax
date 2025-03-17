@@ -4,14 +4,14 @@ RSpec.describe FileViewStat, type: :model do
   let(:user_id) { 123 }
   let(:date) { Time.current }
   let(:file_stat) { described_class.create(views: "25", date: date, file_id: file_id, user_id: user_id) }
-  let(:file) { mock_model(FileSet, id: 99) }
+  let(:file) { mock_model('MockFileSet', id: 99) }
 
   it "has attributes" do
     expect(file_stat).to respond_to(:views)
     expect(file_stat).to respond_to(:date)
     expect(file_stat).to respond_to(:file_id)
     expect(file_stat.file_id).to eq("99")
-    expect(file_stat.date).to eq(date)
+    expect(file_stat.date.round(0)).to eq(date.round(0))
     expect(file_stat.views).to eq(25)
     expect(file_stat.user_id).to eq(user_id)
   end
@@ -46,7 +46,7 @@ RSpec.describe FileViewStat, type: :model do
 
     describe "cache empty" do
       let(:stats) do
-        expect(described_class).to receive(:ga_statistics).and_return(sample_pageview_statistics)
+        expect(Hyrax::Analytics).to receive(:page_statistics).and_return(sample_pageview_statistics)
         described_class.statistics(file, Time.zone.today - 4.days, user_id)
       end
 
@@ -70,7 +70,7 @@ RSpec.describe FileViewStat, type: :model do
       let!(:file_view_stat) { described_class.create(date: (Time.zone.today - 5.days).to_datetime, file_id: file_id, views: "25") }
 
       let(:stats) do
-        expect(described_class).to receive(:ga_statistics).and_return(sample_pageview_statistics)
+        expect(Hyrax::Analytics).to receive(:page_statistics).and_return(sample_pageview_statistics)
         described_class.statistics(file, Time.zone.today - 5.days)
       end
 

@@ -78,8 +78,14 @@ class Hyrax::CatalogSearchBuilder < Hyrax::SearchBuilder
     "{!dismax v=$user_query}"
   end
 
-  # join from file id to work relationship solrized file_set_ids_ssim
+  # join from file id to work relationship solrized member_ids_ssim
   def join_for_works_from_files
-    "{!join from=#{Hyrax.config.id_field} to=file_set_ids_ssim}#{dismax_query}"
+    "{!join from=#{Hyrax.config.id_field} to=member_ids_ssim}#{file_set_filter}#{dismax_query}"
+  end
+
+  # Query segment to filter out non-FileSet documents
+  # A wildcard * is used to avoid attempting to escape the :: in Hyrax::FileSet
+  def file_set_filter
+    "{!lucene q.op=AND}has_model_ssim:*FileSet"
   end
 end

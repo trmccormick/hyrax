@@ -2,7 +2,7 @@
 require 'rails_helper'
 
 # Integration tests for the full midddleware stack
-RSpec.describe Hyrax::DefaultMiddlewareStack, :clean_repo do
+RSpec.describe Hyrax::DefaultMiddlewareStack, :active_fedora, :clean_repo do
   subject(:actor)  { stack.build(Hyrax::Actors::Terminator.new) }
   let(:ability)    { ::Ability.new(user) }
   let(:attributes) { {} }
@@ -129,6 +129,7 @@ RSpec.describe Hyrax::DefaultMiddlewareStack, :clean_repo do
       it "sets the embargo release date on the given work" do
         expect(work.embargo_release_date).to be_falsey
         actor.create(env)
+
         expect(work.class.find(work.id).embargo_release_date).to be_present
       end
 
@@ -138,7 +139,7 @@ RSpec.describe Hyrax::DefaultMiddlewareStack, :clean_repo do
         it 'populates meaningful errors on the work' do
           expect { actor.create(env) }
             .to change { env.curation_concern.errors.messages }
-            .to include(embargo_release_date: ["Must be a future date."])
+            .to match(hash_including(embargo_release_date: array_including("Must be a future date.")))
         end
       end
     end

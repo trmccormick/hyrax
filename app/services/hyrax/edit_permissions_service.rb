@@ -20,17 +20,35 @@ module Hyrax
     # @note
     #   +form object.class = SimpleForm::FormBuilder+
     #    For works (i.e. GenericWork):
-    #    * form object.object = Hyrax::GenericWorkForm
-    #    * form object.object.model = GenericWork
+    #    * form_object.object = Hyrax::GenericWorkForm
+    #    * form_object.object.model = GenericWork
     #    * use the work itself
     #    For file_sets:
-    #    * form object.object.class = FileSet
+    #    * form_object.object.class = FileSet
+    #    * use work the file_set is in
+    #    For file set forms:
+    #    * form_object.object.class = Hyrax::Forms::FileSetForm OR
+    #      Hyrax::Forms::FileSetEditForm
+    #    * form_object.object.model = FileSet
     #    * use work the file_set is in
     #    No other object types are supported by this view.
     def self.build_service_object_from(form:, ability:)
       if form.object.respond_to?(:model) && form.object.model.work?
+        # The provided form object is a work form.
         new(object: form.object, ability: ability)
+      elsif form.object.respond_to?(:model) && form.object.model.file_set?
+        # The provided form object is a FileSet form. For Valkyrie forms
+        # (+Hyrax::Forms::FileSetForm+), +:in_works_ids+ is prepopulated onto
+        # the form object itself. For +Hyrax::Forms::FileSetEditForm+, the
+        # +:in_works+ method is present on the wrapped +:model+.
+        if form.object.is_a?(Hyrax::Forms::FileSetForm)
+          object_id = form.object.in_works_ids.first
+          new(object: Hyrax.query_service.find_by(id: object_id), ability: ability)
+        else
+          new(object: form.object.model.in_works.first, ability: ability)
+        end
       elsif form.object.file_set?
+        # The provided form object is a FileSet.
         new(object: form.object.in_works.first, ability: ability)
       end
     end
@@ -197,25 +215,12 @@ module Hyrax
     # @todo Refactor inner working of code as there's lots of branching logic with potential hidden assumptions.
     def qualifies_as_unauthorized_collection?(resource:)
       case resource
-      when AdminSet, Hyrax::AdministrativeSet
+      when *Hyrax::ModelRegistry.admin_set_classes
         # Prior to this refactor, we looked at AdminSet only; However with the advent of the
         # Hyrax::AdministrativeSet, we need to test both cases.
         true
       else
-        if resource.respond_to?(:share_applies_to_new_works?)
-          # The Collection model has traditionally delegated #share_applies_to_new_works? to
-          # the underlying collection_type
-          # (see https://github.com/samvera/hyrax/blob/696da5db/spec/models/collection_spec.rb#L189)
-          resource.share_applies_to_new_works?
-        elsif resource.respond_to?(:collection_type_gid)
-          # This is likely a Hyrax::PcdmCollection object, which means we don't have the delegation
-          # behavior.  Instead we'll query the collection type directly.
-          collection_type = CollectionType.find_by_gid(resource.collection_type_gid)
-          collection_type&.share_applies_to_new_works?
-        else
-          # How might we get here?
-          false
-        end
+        Hyrax::CollectionType.for(collection: resource).share_applies_to_new_works?
       end
     end
 

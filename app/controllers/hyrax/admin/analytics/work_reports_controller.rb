@@ -4,9 +4,10 @@ module Hyrax
     module Analytics
       class WorkReportsController < AnalyticsController
         include Hyrax::BreadcrumbsForWorksAnalytics
+        before_action :authenticate_user!
 
         def index
-          return unless Hyrax.config.analytics?
+          return unless Hyrax.config.analytics_reporting?
 
           @accessible_works ||= accessible_works
           @accessible_file_sets ||= accessible_file_sets
@@ -14,10 +15,7 @@ module Hyrax
           @top_works = paginate(top_works_list, rows: 10)
           @top_file_set_downloads = paginate(top_files_list, rows: 10)
 
-          if current_user.ability.admin?
-            @pageviews = Hyrax::Analytics.daily_events('work-view')
-            @downloads = Hyrax::Analytics.daily_events('file-set-download')
-          end
+          @pageviews = Hyrax::Analytics.daily_events('work-view'), @downloads = Hyrax::Analytics.daily_events('file-set-download') if current_user.ability.admin?
 
           respond_to do |format|
             format.html
@@ -29,7 +27,7 @@ module Hyrax
           @pageviews = Hyrax::Analytics.daily_events_for_id(@document.id, 'work-view')
           @uniques = Hyrax::Analytics.unique_visitors_for_id(@document.id)
           @downloads = Hyrax::Analytics.daily_events_for_id(@document.id, 'file_set_in_work_download')
-          @files = paginate(@document._source["file_set_ids_ssim"], rows: 5)
+          @files = paginate(@document._source["member_ids_ssim"], rows: 5)
           respond_to do |format|
             format.html
             format.csv { export_data }
@@ -39,13 +37,13 @@ module Hyrax
   private
 
         def accessible_works
-          models = Hyrax.config.curation_concerns.map { |m| "\"#{m}\"" }
+          models = Hyrax::ModelRegistry.work_rdf_representations.map { |m| "\"#{m}\"" }
           if current_user.ability.admin?
-            ActiveFedora::SolrService.query("has_model_ssim:(#{models.join(' OR ')})",
+            Hyrax::SolrService.query("has_model_ssim:(#{models.join(' OR ')})",
               fl: 'title_tesim, id, member_of_collections',
               rows: 50_000)
           else
-            ActiveFedora::SolrService.query(
+            Hyrax::SolrService.query(
               "edit_access_person_ssim:#{current_user} AND has_model_ssim:(#{models.join(' OR ')})",
               fl: 'title_tesim, id, member_of_collections',
               rows: 50_000
@@ -54,15 +52,16 @@ module Hyrax
         end
 
         def accessible_file_sets
+          file_set_model_clause = "has_model_ssim:\"#{Hyrax::ModelRegistry.file_set_rdf_representations.join('" OR "')}\""
           if current_user.ability.admin?
-            ActiveFedora::SolrService.query(
-              "has_model_ssim:FileSet",
+            Hyrax::SolrService.query(
+              file_set_model_clause,
               fl: 'title_tesim, id',
               rows: 50_000
             )
           else
-            ActiveFedora::SolrService.query(
-              "edit_access_person_ssim:#{current_user} AND has_model_ssim:FileSet",
+            Hyrax::SolrService.query(
+              "edit_access_person_ssim:#{current_user} AND #{file_set_model_clause}",
               fl: 'title_tesim, id',
               rows: 50_000
             )

@@ -11,20 +11,21 @@ module Hyrax
         # Loads configuration options from config/analytics.yml. Expected structure:
         # `analytics:`
         # `  matomo:`
-        # `    base_url: <%= ENV['MATOMOT_BASE_URL']`
-        # `    site_id: <%= ENV['MATOMOT_SITE_ID']`
-        # `    auth_token: <%= ENV['MATOMOT_AUTH_TOKEN']`
+        # `    base_url: <%= ENV['MATOMO_BASE_URL']`
+        # `    site_id: <%= ENV['MATOMO_SITE_ID']`
+        # `    auth_token: <%= ENV['MATOMO_AUTH_TOKEN']`
         # @return [Config]
         def config
           @config ||= Config.load_from_yaml
         end
 
         class Config
+          # TODO: test matomo and see if it needs any of the updates from https://github.com/samvera/hyrax/pull/6063
           def self.load_from_yaml
             filename = Rails.root.join('config', 'analytics.yml')
             yaml = YAML.safe_load(ERB.new(File.read(filename)).result)
             unless yaml
-              Rails.logger.error("Unable to fetch any keys from #{filename}.")
+              Hyrax.logger.error("Unable to fetch any keys from #{filename}.")
               return new({})
             end
             new yaml.fetch('analytics')&.fetch('matomo')
@@ -153,24 +154,37 @@ module Hyrax
           response["nb_visits_returning"].to_i + response["nb_visits_new"].to_i
         end
 
+        # TODO: implement
+        def page_statistics(_start_date, _object)
+          []
+        end
+
         def results_array(response, metric)
           results = []
           response.each do |result|
             if result[1].empty?
               results.push([result[0].to_date, 0])
             elsif result[1].is_a?(Array)
-              results.push([result[0].to_date, result[1].first[metric]])
+              results.push([result[0].to_date, result[1].first[metric].to_i])
             else
-              results.push([result[0].to_date, result[1][metric].presence || 0])
+              results.push([result[0].to_date, result[1][metric].presence.to_i])
             end
           end
           Hyrax::Analytics::Results.new(results)
         end
 
+        # If Matomo detects an error it will return a reponse with the key {"result":"error"}
+        # instead of returning an error status code. This method checks for that key.
+        def contains_matomo_error?(response)
+          response.is_a?(Hash) && response["result"] == "error"
+        end
+
         def get(params)
           response = Faraday.get(config.base_url, params)
           return [] if response.status != 200
-          JSON.parse(response.body)
+          api_response = JSON.parse(response.body)
+          return [] if contains_matomo_error?(api_response)
+          api_response
         end
 
         def api_params(method, period, date, additional_params = {})

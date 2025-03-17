@@ -1,5 +1,5 @@
 # frozen_string_literal: true
-RSpec.describe GenericWorkIndexer do
+RSpec.describe GenericWorkIndexer, :active_fedora do
   subject(:solr_document) { service.generate_solr_document }
 
   # TODO: file_set_ids returns an empty set unless you persist the work
@@ -85,7 +85,7 @@ RSpec.describe GenericWorkIndexer do
     end
 
     before do
-      allow(PowerConverter).to receive(:convert_to_sipity_entity).with(work).and_return(sipity_entity)
+      allow(Sipity).to receive(:Entity).with(work).and_return(sipity_entity)
       allow(Hyrax::Workflow::PermissionQuery).to receive(:scope_roles_associated_with_the_given_entity)
         .and_return(['approve', 'reject'])
     end

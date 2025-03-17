@@ -15,6 +15,11 @@ class Hyrax::Characterization::ValkyrieCharacterizationService
     new(metadata: metadata, file: file, **options).characterize
     saved = Hyrax.persister.save(resource: metadata)
     Hyrax.publisher.publish('file.metadata.updated', metadata: saved, user: user)
+
+    Hyrax.publisher.publish('file.characterized',
+                            file_set: Hyrax.query_service.find_by(id: saved.file_set_id),
+                            file_id: saved.id.to_s,
+                            path_hint: saved.file_identifier.to_s)
   end
 
   ##
@@ -27,25 +32,27 @@ class Hyrax::Characterization::ValkyrieCharacterizationService
   # @!attribute [rw] source
   #   @return [Valkyrie::StorageAdapter::StreamFile]
   # @!attribute [rw] tools
-  #   @todo clarify what this is for. it gets passed to {#characterize}
-  #     on the characterizer, but it's not clear how to customize
-  #     effectively.
+  #   can be :fits, :fits_servlet, :ffprobe or any other service added to HydraFileCharacterization
+  #   note that ffprope is faster but only works on AV files.
   #   @return [Symbol]
   attr_accessor :mapping, :metadata, :parser, :source, :tools
 
   ##
   # @api private
-  def initialize(metadata:, # rubocop:disable Metrics/ParameterLists
-                 file:,
-                 characterizer: Hydra::FileCharacterization,
-                 parser_mapping: Hydra::Works::Characterization.mapper,
-                 parser: Hydra::Works::Characterization::FitsDocument.new)
+  def initialize( # rubocop:disable Metrics/ParameterLists
+    metadata:,
+    file:,
+    characterizer: Hydra::FileCharacterization,
+    parser_mapping: Hydra::Works::Characterization.mapper,
+    parser: Hydra::Works::Characterization::FitsDocument.new,
+    ch12n_tool: :fits
+  )
     @characterizer = characterizer
     @metadata      = metadata
     @source        = file
     @mapping       = parser_mapping
     @parser        = parser
-    @tools         = :fits
+    @tools         = ch12n_tool
   end
 
   ##

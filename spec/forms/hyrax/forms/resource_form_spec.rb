@@ -86,6 +86,34 @@ RSpec.describe Hyrax::Forms::ResourceForm do
     end
   end
 
+  describe '#based_near' do
+    subject(:form) { form_class.new(work) }
+
+    let(:work) { build(:monograph) }
+    let(:geonames_uri) { "https://sws.geonames.org/4254679/" }
+
+    let(:form_class) do
+      Class.new(Hyrax::Forms::ResourceForm(work.class)) do
+        include Hyrax::FormFields(:basic_metadata)
+      end
+    end
+
+    it 'runs the based_near prepopulator' do
+      work.based_near = [geonames_uri]
+      form.prepopulate!
+      expect(form.based_near)
+        .to contain_exactly(an_instance_of(Hyrax::ControlledVocabularies::Location))
+    end
+
+    it 'runs the based_near populator' do
+      form.validate(based_near_attributes: { "0" => { "hidden_label" => geonames_uri,
+                                                      "id" => geonames_uri,
+                                                      "_destroy" => "" } })
+      expect(form.based_near)
+        .to contain_exactly(geonames_uri)
+    end
+  end
+
   describe '#embargo_release_date' do
     context 'without an embargo' do
       it 'is nil' do
@@ -145,7 +173,7 @@ RSpec.describe Hyrax::Forms::ResourceForm do
       it 'is empty' do
         form.prepopulate!
 
-        expect(form.in_works_ids).to eq []
+        expect(form.in_works_ids.to_a).to eq []
       end
     end
   end
@@ -423,6 +451,58 @@ RSpec.describe Hyrax::Forms::ResourceForm do
       it 'does not have the primary terms' do
         expect(form.secondary_terms)
           .not_to include(:title, :creator, :rights_statement)
+      end
+    end
+  end
+
+  describe '#sync' do
+    context 'when setting an embargo' do
+      let(:params) do
+        { title: ["Object Under Embargo"],
+          embargo_release_date: Date.tomorrow.to_s,
+          visibility: "embargo",
+          visibility_after_embargo: "open",
+          visibility_during_embargo: "restricted" }
+      end
+
+      it 'builds an embargo' do
+        form.validate(params)
+
+        expect { form.sync }
+          .to change { work.embargo }
+          .to have_attributes(embargo_release_date: Date.tomorrow.to_s,
+                              visibility_after_embargo: "open",
+                              visibility_during_embargo: "restricted")
+      end
+
+      it 'sets visibility to "during" value' do
+        form.validate(params)
+
+        expect(form.visibility).to eq "restricted"
+      end
+    end
+
+    context 'when setting a lease' do
+      let(:params) do
+        { title: ["Object Under Lease"],
+          lease_expiration_date: Date.tomorrow.to_s,
+          visibility: "lease",
+          visibility_after_lease: "restricted",
+          visibility_during_lease: "open" }
+      end
+
+      it 'builds an embargo' do
+        form.validate(params)
+
+        expect { form.sync }
+          .to change { work.lease }
+          .to have_attributes(lease_expiration_date: Date.tomorrow.to_s)
+      end
+
+      it 'sets visibility to "during" value' do
+        form.validate(params)
+
+        expect(form.visibility).to eq "open"
       end
     end
   end

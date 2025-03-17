@@ -27,7 +27,7 @@ module Wings
       #
       # @return [void] apply the property
       def apply(klass)
-        return if klass.properties.keys.include?(name) ||
+        return if klass.properties.keys.include?(name.to_s) ||
                   klass.protected_property_name?(name)
         klass.send(definition_method, name, options)
       end
@@ -77,11 +77,10 @@ module Wings
     # default work class builder
     def self.DefaultWork(resource_class) # rubocop:disable Naming/MethodName
       class_cache[resource_class] ||= Class.new(DefaultWork) do
-        self.valkyrie_class = resource_class
-
+        self.valkyrie_class = resource_class.respond_to?(:valkyrie_class) ? resource_class.valkyrie_class : resource_class
         # skip reserved attributes, we assume we don't need to translate valkyrie internals
-        schema = resource_class.schema.reject do |key|
-          resource_class.reserved_attributes.include?(key.name)
+        schema = valkyrie_class.schema.reject do |key|
+          valkyrie_class.reserved_attributes.include?(key.name)
         end
 
         Wings::ActiveFedoraConverter.apply_properties(self, schema)
@@ -98,6 +97,7 @@ module Wings
       include Hyrax::Noid
       include Hyrax::Permissions
       include Hydra::AccessControls::Embargoable
+      include Hyrax::CoreMetadata
       property :nested_resource, predicate: ::RDF::URI("http://example.com/nested_resource"), class_name: "Wings::ActiveFedoraConverter::NestedResource"
 
       validates :lease_expiration_date, 'hydra/future_date': true, on: :create
@@ -118,7 +118,7 @@ module Wings
         end
 
         def to_rdf_representation
-          "Wings(#{valkyrie_class})"
+          "Wings(#{valkyrie_class})" unless valkyrie_class&.to_s&.include?('Wings(')
         end
         alias inspect to_rdf_representation
         alias to_s inspect
@@ -136,8 +136,12 @@ module Wings
         false
       end
 
+      def file_sets
+        members.select(&:file_set?)
+      end
+
       def indexing_service
-        Hyrax::ValkyrieIndexer.for(resource: valkyrie_resource)
+        Hyrax::Indexers::ResourceIndexer.for(resource: valkyrie_resource)
       end
 
       def to_global_id

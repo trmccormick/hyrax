@@ -548,7 +548,10 @@ es:
           de tiempo, el proveedor en la nube podría no ser capaz de resolver la
           petición. Si se experimentan errores durante la carga, por favor,
           comuníquese con nosotros a través de %{contact_href}.</p>
-        local_upload_html: "<p>Puede agregar uno o más archivos para asociar con esta obra.</p>"
+          <p>Las cargas están limitadas a %{upload_file_limit} archivos, %{upload_size_limit} MB cada uno.</p>
+        local_upload_html: |
+          <p>Puede agregar uno o más archivos para asociar con esta obra.</p>
+          <p>Las cargas están limitadas a %{upload_file_limit} archivos, %{upload_size_limit} MB cada uno.</p>
       form_member_of_collections:
         actions:
           remove: Eliminar de la colección
@@ -601,6 +604,7 @@ es:
         legend_html: Miniatura
       form_visibility_component:
         visibility: La visibilidad
+        subtitle_html: <small>¿Quién debería poder ver o descargar este contenido?</small>
       inspect_work:
         back_to: De regreso
         entity_id: ID de entidad
@@ -901,6 +905,11 @@ es:
             collection_title: Título de la colección
           this_collection_in_other_collections_description: Puede agregar esta colección a otras colecciones como una subcolección.
         form_share:
+          access_options:
+            creator: Creador
+            depositor: Depositor
+            manager: Gerente
+            viewer: Espectador        
           add_group: Añadir grupo
           add_sharing: Agregar Compartir
           add_user: Agregar usuario
@@ -1091,14 +1100,14 @@ es:
       no_transfers: No ha transferido ningún trabajo
       profiles:
         edit_primary:
-          change_picture: <i class = "glyphicon glyphicon-camera"> </i> Cambiar imagen
+          change_picture: <i class = "fa fa-camera"> </i> Cambiar imagen
           delete_picture: Eliminar foto
           delete_picture_data_content: Si desea eliminar su imagen por completo, marque la casilla y guarde su perfil.
           delete_picture_data_original_title: Eliminar imagen
           facebook_handle: <i class = "fa fa-facebook" aria-hidden = "true"> </i> Asa de Facebook
           google_handle: <i class = "fa fa-google-plus"> </i> Manija de Google+
           help_change_picture_type: JPG, GIF o PNG (menos de 2 MB)
-          save_profile: <i class = "glyphicon glyphicon-save"> </i> Guardar perfil
+          save_profile: <i class = "fa fa-floppy-o"> </i> Guardar perfil
           twitter_handle: <i class = "fa fa-twitter" aria-hidden = "true"> </i> Twitter Handle
       proxy_activity: Actividad de Proxy
       proxy_add_deny: No puedes hacerte un proxy
@@ -1411,14 +1420,14 @@ es:
       count:
         collections:
           collections_listing: Listado de colecciones
-          in_repo: "<strong> colecciones %{total_count} </ strong> en el repositorio"
-          you_manage: "<strong> colecciones %{total_count} </ strong> puede administrar en el repositorio"
-          you_own: "<strong> colecciones %{total_count} </ strong> que posee en el repositorio"
+          in_repo: "<strong> colecciones %{total_count} </strong> en el repositorio"
+          you_manage: "<strong> colecciones %{total_count} </strong> puede administrar en el repositorio"
+          you_own: "<strong> colecciones %{total_count} </strong> que posee en el repositorio"
         works:
-          in_repo: "<strong> %{total_count} funciona </ strong> en el repositorio"
+          in_repo: "<strong> %{total_count} funciona </strong> en el repositorio"
           works_listing: Listado de obras
-          you_manage: "<strong> %{total_count} funciona </ strong> puedes administrar en el repositorio"
-          you_own: "<strong> %{total_count} funciona </ strong> en el repositorio"
+          you_manage: "<strong> %{total_count} funciona </strong> puedes administrar en el repositorio"
+          you_own: "<strong> %{total_count} funciona </strong> en el repositorio"
       sort_and_per_page:
         number_of_results_to_display_per_page: Número de resultados a mostrar por página
     nav_safety:
@@ -1456,7 +1465,7 @@ es:
         changes_required:
           message: |-
             %{title} (%{link}) requiere cambios adicionales antes de la aprobación.
-             '%{comment}'
+             '%{comment}'
           subject: Su depósito requiere cambios
         deposited:
           message: "%{title} (%{link}) fue aprobado por %{user}. %{comment}"
@@ -1490,7 +1499,7 @@ es:
       read: Ver descarga
     search:
       button:
-        html: <span class="glyphicon glyphicon-search"></span> Ir
+        html: <span class="fa fa-search"></span> Ir
         text: Buscar
       form:
         option:
@@ -1836,7 +1845,7 @@ es:
         find_child_work: Busque un trabajo ...
         member_of_collection_ids: Seleccione una colección ...
     required:
-      html: <span class="label label-info required-tag">obligatorio</span>
+      html: <span class="badge badge-info required-tag">obligatorio</span>
   total_view:
     one: Este trabajo tiene 1 vista total
     other: Este trabajo tiene un total de %{count} visualizaciones

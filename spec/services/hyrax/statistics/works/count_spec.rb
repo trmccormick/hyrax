@@ -3,16 +3,31 @@ RSpec.describe Hyrax::Statistics::Works::Count do
   describe ".by_permission", :clean_repo do
     let(:user1) { build(:user, id: 1) }
     let(:yesterday) { 1.day.ago }
+    let(:wings_disabled) { Hyrax.config.disable_wings }
 
     before do
-      build(:public_generic_work, user: user1, id: "pdf1223").update_index
-      build(:public_generic_work, user: user1, id: "wav1223").update_index
-      build(:public_generic_work, user: user1, id: "mp31223", create_date: [2.days.ago]).update_index
-      build(:registered_generic_work, user: user1, id: "reg1223").update_index
-      build(:generic_work, user: user1, id: "private1223").update_index
-      Collection.new(id: "ccc123") do |c|
-        c.apply_depositor_metadata(user1)
-        c.update_index
+      if wings_disabled
+        valkyrie_create(:monograph, :public, depositor: user1.user_key)
+        valkyrie_create(:monograph, :public, depositor: user1.user_key)
+
+        # Valkyrie postgres adapter filters created_at letting ActiveRecord handle it.
+        allow(Valkyrie::Persistence::Postgres::ORM::Resource).to receive(:current_time_from_proper_timezone).and_return(2.days.ago)
+        valkyrie_create(:monograph, :public, depositor: user1.user_key, created_at: [2.days.ago])
+        allow(Valkyrie::Persistence::Postgres::ORM::Resource).to receive(:current_time_from_proper_timezone).and_call_original
+
+        valkyrie_create(:monograph, read_groups: ['registered'], depositor: user1.user_key)
+        valkyrie_create(:monograph, read_groups: ['private'], depositor: user1.user_key)
+        valkyrie_create(:hyrax_collection, depositor: user1.user_key)
+      else
+        build(:public_generic_work, user: user1, id: "pdf1223").update_index
+        build(:public_generic_work, user: user1, id: "wav1223").update_index
+        build(:public_generic_work, user: user1, id: "mp31223", create_date: [2.days.ago]).update_index
+        build(:registered_generic_work, user: user1, id: "reg1223").update_index
+        build(:generic_work, user: user1, id: "private1223").update_index
+        Collection.new(id: "ccc123") do |c|
+          c.apply_depositor_metadata(user1)
+          c.update_index
+        end
       end
     end
 

@@ -3,28 +3,28 @@ RSpec.describe Hyrax::AdminSetService do
   let(:controller) { ::CatalogController.new }
   let(:context) do
     double(current_ability: Ability.new(user),
-           repository: controller.repository,
-           blacklight_config: controller.blacklight_config)
+           repository: controller.blacklight_config.repository,
+           blacklight_config: controller.blacklight_config,
+           search_state_class: nil)
   end
   let(:service) { described_class.new(context) }
-  let(:user) { create(:user) }
+  let(:user) { FactoryBot.create(:user) }
 
   describe "#search_results", :clean_repo do
-    subject { service.search_results(access) }
-
-    let!(:as1) { create(:admin_set, read_groups: ['public'], title: ['foo']) }
-    let!(:as2) { create(:admin_set, read_groups: ['public'], title: ['bar']) }
-    let!(:as3) { create(:admin_set, edit_users: [user.user_key], title: ['baz']) }
+    let!(:as1) { FactoryBot.valkyrie_create(:hyrax_admin_set, read_groups: ['public']) }
+    let!(:as2) { FactoryBot.valkyrie_create(:hyrax_admin_set, read_groups: ['public']) }
+    let!(:as3) { FactoryBot.valkyrie_create(:hyrax_admin_set, edit_users: [user.user_key]) }
 
     before do
-      create(:collection, :public) # this should never be returned.
+      FactoryBot.valkyrie_create(:hyrax_collection, :public) # this should never be returned.
     end
 
     context "with read access" do
       let(:access) { :read }
 
       it "returns three admin sets" do
-        expect(subject.map(&:id)).to match_array [as1.id, as2.id, as3.id]
+        expect(service.search_results(access).map(&:id))
+          .to contain_exactly(as1.id, as2.id, as3.id)
       end
     end
 
@@ -32,7 +32,8 @@ RSpec.describe Hyrax::AdminSetService do
       let(:access) { :edit }
 
       it "returns one admin set" do
-        expect(subject.map(&:id)).to match_array [as3.id]
+        expect(service.search_results(access).map(&:id))
+          .to contain_exactly(as3.id)
       end
     end
   end
@@ -131,10 +132,10 @@ RSpec.describe Hyrax::AdminSetService do
     end
 
     context "when there are works and files in the admin set" do
-      let(:work1_attrs) { { id: 'work_1', isPartOf_ssim: 'admin_set_1', file_set_ids_ssim: ['file_1', 'file_3', 'file_4'] } }
-      let(:work2_attrs) { { id: 'work_2', isPartOf_ssim: 'admin_set_2', file_set_ids_ssim: ['file_2'] } }
-      let(:work3_attrs) { { id: 'work_3', isPartOf_ssim: 'admin_set_2', file_set_ids_ssim: ['file_6', 'file_7'] } }
-      let(:work4_attrs) { { id: 'work_4', isPartOf_ssim: 'admin_set_3', file_set_ids_ssim: ['file_8'] } }
+      let(:work1_attrs) { { id: 'work_1', isPartOf_ssim: 'admin_set_1', member_ids_ssim: ['file_1', 'file_3', 'file_4'] } }
+      let(:work2_attrs) { { id: 'work_2', isPartOf_ssim: 'admin_set_2', member_ids_ssim: ['file_2'] } }
+      let(:work3_attrs) { { id: 'work_3', isPartOf_ssim: 'admin_set_2', member_ids_ssim: ['file_6', 'file_7'] } }
+      let(:work4_attrs) { { id: 'work_4', isPartOf_ssim: 'admin_set_3', member_ids_ssim: ['file_8'] } }
 
       it "returns rows with document in the first column, count of works in second column and count of files in the third column" do
         expect(subject).to eq [struct.new(admin_sets[0], 1, 3), struct.new(admin_sets[1], 2, 3), struct.new(admin_sets[2], 1, 1)]
@@ -142,9 +143,9 @@ RSpec.describe Hyrax::AdminSetService do
     end
 
     context "when there are no files in the admin set" do
-      let(:work1_attrs) { { id: 'work_1', isPartOf_ssim: 'admin_set_1', file_set_ids_ssim: [] } }
-      let(:work2_attrs) { { id: 'work_2', isPartOf_ssim: 'admin_set_2', file_set_ids_ssim: [] } }
-      let(:work3_attrs) { { id: 'work_3', isPartOf_ssim: 'admin_set_2', file_set_ids_ssim: [] } }
+      let(:work1_attrs) { { id: 'work_1', isPartOf_ssim: 'admin_set_1', member_ids_ssim: [] } }
+      let(:work2_attrs) { { id: 'work_2', isPartOf_ssim: 'admin_set_2', member_ids_ssim: [] } }
+      let(:work3_attrs) { { id: 'work_3', isPartOf_ssim: 'admin_set_2', member_ids_ssim: [] } }
 
       it "returns rows with document in the first column, count of works in second column and count of no files in the third column" do
         expect(subject).to eq [struct.new(admin_sets[0], 1, 0), struct.new(admin_sets[1], 2, 0), struct.new(admin_sets[2], 0, 0)]
@@ -152,17 +153,17 @@ RSpec.describe Hyrax::AdminSetService do
     end
 
     context "when there are more than 10 works in the admin set" do
-      let(:work1_attrs) { { id: 'work_1', isPartOf_ssim: 'admin_set_1', file_set_ids_ssim: ['file_1'] } }
-      let(:work2_attrs) { { id: 'work_2', isPartOf_ssim: 'admin_set_1', file_set_ids_ssim: ['file_2'] } }
-      let(:work3_attrs) { { id: 'work_3', isPartOf_ssim: 'admin_set_1', file_set_ids_ssim: ['file_3'] } }
-      let(:work4_attrs) { { id: 'work_4', isPartOf_ssim: 'admin_set_1', file_set_ids_ssim: ['file_4'] } }
-      let(:work5_attrs) { { id: 'work_5', isPartOf_ssim: 'admin_set_1', file_set_ids_ssim: ['file_5'] } }
-      let(:work6_attrs) { { id: 'work_6', isPartOf_ssim: 'admin_set_1', file_set_ids_ssim: ['file_6'] } }
-      let(:work7_attrs) { { id: 'work_7', isPartOf_ssim: 'admin_set_1', file_set_ids_ssim: ['file_7'] } }
-      let(:work8_attrs) { { id: 'work_8', isPartOf_ssim: 'admin_set_1', file_set_ids_ssim: ['file_8'] } }
-      let(:work9_attrs) { { id: 'work_9', isPartOf_ssim: 'admin_set_1', file_set_ids_ssim: ['file_9'] } }
-      let(:work10_attrs) { { id: 'work_10', isPartOf_ssim: 'admin_set_1', file_set_ids_ssim: ['file_10'] } }
-      let(:work11_attrs) { { id: 'work_11', isPartOf_ssim: 'admin_set_1', file_set_ids_ssim: ['file_11'] } }
+      let(:work1_attrs) { { id: 'work_1', isPartOf_ssim: 'admin_set_1', member_ids_ssim: ['file_1'] } }
+      let(:work2_attrs) { { id: 'work_2', isPartOf_ssim: 'admin_set_1', member_ids_ssim: ['file_2'] } }
+      let(:work3_attrs) { { id: 'work_3', isPartOf_ssim: 'admin_set_1', member_ids_ssim: ['file_3'] } }
+      let(:work4_attrs) { { id: 'work_4', isPartOf_ssim: 'admin_set_1', member_ids_ssim: ['file_4'] } }
+      let(:work5_attrs) { { id: 'work_5', isPartOf_ssim: 'admin_set_1', member_ids_ssim: ['file_5'] } }
+      let(:work6_attrs) { { id: 'work_6', isPartOf_ssim: 'admin_set_1', member_ids_ssim: ['file_6'] } }
+      let(:work7_attrs) { { id: 'work_7', isPartOf_ssim: 'admin_set_1', member_ids_ssim: ['file_7'] } }
+      let(:work8_attrs) { { id: 'work_8', isPartOf_ssim: 'admin_set_1', member_ids_ssim: ['file_8'] } }
+      let(:work9_attrs) { { id: 'work_9', isPartOf_ssim: 'admin_set_1', member_ids_ssim: ['file_9'] } }
+      let(:work10_attrs) { { id: 'work_10', isPartOf_ssim: 'admin_set_1', member_ids_ssim: ['file_10'] } }
+      let(:work11_attrs) { { id: 'work_11', isPartOf_ssim: 'admin_set_1', member_ids_ssim: ['file_11'] } }
 
       it "returns rows with document in the first column, count of works in second column and count of files in the third column" do
         expect(subject).to eq [struct.new(admin_sets[0], 11, 11), struct.new(admin_sets[1], 0, 0), struct.new(admin_sets[2], 0, 0)]

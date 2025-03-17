@@ -8,10 +8,15 @@ RSpec.describe Hyrax::WorksControllerBehavior, :clean_repo, type: :controller do
   let(:work)  { FactoryBot.valkyrie_create(:hyrax_work, alternate_ids: [id], title: title) }
   let(:id)    { '123' }
 
+  let(:work_route_path) do
+    "#{work.model_name.singular_route_key}_path"
+  end
+
   let(:main_app_routes) do
     ActionDispatch::Routing::RouteSet.new.tap do |r|
       r.draw do # draw minimal routes for this controller mixin
         mount Hyrax::Engine, at: '/'
+        namespaced_resources 'hyrax/test/simple_work', except: [:index]
         namespaced_resources 'hyrax/test/simple_work_legacy', except: [:index]
         devise_for :users
         resources :solr_documents, only: [:show], path: '/catalog', controller: 'catalog'
@@ -23,6 +28,9 @@ RSpec.describe Hyrax::WorksControllerBehavior, :clean_repo, type: :controller do
     allow(Hyrax.config)
       .to receive(:registered_curation_concern_types)
       .and_return([work.model_name.name])
+    allow(Hyrax::ModelRegistry)
+      .to receive(:work_classes)
+      .and_return([Hyrax::Test::SimpleWork])
 
     # NOTE: we can't run jobs that rely on routes (i.e. those that send notifications)
     # from here because of this stubbing. it's proabably best just to not do that
@@ -36,7 +44,8 @@ RSpec.describe Hyrax::WorksControllerBehavior, :clean_repo, type: :controller do
     include Hyrax::WorksControllerBehavior # rubocop:disable RSpec/DescribedClass
 
     self.curation_concern_type = Hyrax::Test::SimpleWork
-    self.search_builder_class  = Wings::WorkSearchBuilder(Hyrax::Test::SimpleWork)
+    self.search_builder_class  = Wings::WorkSearchBuilder(Hyrax::Test::SimpleWork) unless
+      Hyrax.config.disable_wings
     self.work_form_service     = Hyrax::FormFactory.new
   end
 
@@ -73,7 +82,7 @@ RSpec.describe Hyrax::WorksControllerBehavior, :clean_repo, type: :controller do
         get :create, params: { test_simple_work: { title: 'comet in moominland' } }
 
         expect(response)
-          .to redirect_to paths.hyrax_test_simple_work_legacy_path(id: assigns(:curation_concern).id, locale: :en)
+          .to redirect_to paths.send(work_route_path, id: assigns(:curation_concern).id, locale: :en)
       end
 
       it 'sets current user as depositor' do
@@ -123,8 +132,45 @@ RSpec.describe Hyrax::WorksControllerBehavior, :clean_repo, type: :controller do
         end
       end
 
+      context 'when granting additional permissions' do
+        let(:create_params) { { title: 'comet in moominland', permissions_attributes: { "0" => { type: 'person', access: 'read', name: 'foo@bar.com' } } } }
+
+        it 'saves the visibility' do
+          post :create, params: { test_simple_work: create_params }
+
+          expect(Hyrax::AccessControlList(assigns[:curation_concern]).permissions)
+            .to include(have_attributes(mode: :read, agent: 'foo@bar.com'))
+        end
+      end
+
+      context 'when setting an admin set' do
+        let(:admin_set_user) { FactoryBot.create(:user) }
+
+        let(:admin_set) do
+          FactoryBot.valkyrie_create(:hyrax_admin_set, :with_permission_template, user: admin_set_user)
+        end
+
+        let(:create_params) do
+          { title: 'comet in moominland',
+            admin_set_id: admin_set.id }
+        end
+
+        it "sets the admin set" do
+          post :create, params: { test_simple_work: create_params }
+
+          expect(assigns[:curation_concern].admin_set_id).to eq admin_set.id
+        end
+
+        it "grants edit access to the manage users" do
+          post :create, params: { test_simple_work: create_params }
+
+          expect(assigns[:curation_concern].edit_users.to_a)
+            .to include(admin_set_user.user_key)
+        end
+      end
+
       context 'when adding a collection' do
-        let(:collection) { FactoryBot.valkyrie_create(:pcdm_collection) }
+        let(:collection) { FactoryBot.valkyrie_create(:hyrax_collection) }
 
         let(:create_params) do
           { title: 'comet in moominland',
@@ -155,7 +201,7 @@ RSpec.describe Hyrax::WorksControllerBehavior, :clean_repo, type: :controller do
         end
 
         context 'with both setter styles' do
-          let(:other_collection) { FactoryBot.valkyrie_create(:pcdm_collection) }
+          let(:other_collection) { FactoryBot.valkyrie_create(:hyrax_collection) }
           let(:create_params) do
             { title: 'comet in moominland',
               member_of_collections_attributes:
@@ -183,9 +229,8 @@ RSpec.describe Hyrax::WorksControllerBehavior, :clean_repo, type: :controller do
           get :create, params: params
 
           expect(flash[:notice]).to be_html_safe
-          expect(flash[:notice]).to eq "Your files are being processed by Hyrax in the background. " \
-                                       "The metadata and access controls you specified are being applied. " \
-                                       "You may need to refresh this page to see these updates."
+          expect(flash[:notice]).to eq I18n.t("hyrax.works.create.after_create_html",
+                                              application_name: I18n.t('hyrax.product_name', default: 'Hyrax'))
           expect(assigns(:curation_concern)).to have_file_set_members(be_persisted, be_persisted)
         end
 
@@ -411,7 +456,7 @@ RSpec.describe Hyrax::WorksControllerBehavior, :clean_repo, type: :controller do
 
         expect(assigns[:form])
           .to have_attributes(depositor: user.user_key,
-                              admin_set_id: AdminSet::DEFAULT_ID)
+                              admin_set_id: Hyrax::AdminSetCreateService.find_or_create_default_admin_set.id.to_s)
       end
 
       it 'renders form' do
@@ -440,21 +485,21 @@ RSpec.describe Hyrax::WorksControllerBehavior, :clean_repo, type: :controller do
         expect(response.status).to eq 200
       end
 
-      it 'resolves ntriples' do
+      it 'resolves ntriples', :active_fedora do
         get :show, params: { id: work.id }, format: :nt
 
         expect(RDF::Reader.for(:ntriples).new(response.body).objects)
           .to include(RDF::Literal(title.first))
       end
 
-      it 'resolves turtle' do
+      it 'resolves turtle', :active_fedora do
         get :show, params: { id: work.id }, format: :ttl
 
         expect(RDF::Reader.for(:ttl).new(response.body).objects)
           .to include(RDF::Literal(title.first))
       end
 
-      it 'resolves jsonld' do
+      it 'resolves jsonld', :active_fedora do
         get :show, params: { id: work.id }, format: :jsonld
 
         expect(RDF::Reader.for(:jsonld).new(response.body).objects)
@@ -502,7 +547,7 @@ RSpec.describe Hyrax::WorksControllerBehavior, :clean_repo, type: :controller do
 
   describe '#update' do
     it 'redirects to new user login' do
-      patch :update, params: { id: id }
+      patch :update, params: { id: work.id }
 
       expect(response).to redirect_to paths.new_user_session_path(locale: :en)
     end
@@ -513,16 +558,16 @@ RSpec.describe Hyrax::WorksControllerBehavior, :clean_repo, type: :controller do
       before { Hyrax::AdminSetCreateService.find_or_create_default_admin_set }
 
       it 'redirects to updated work' do
-        patch :update, params: { id: id, test_simple_work: { title: 'new title' } }
+        patch :update, params: { id: work.id, test_simple_work: { title: 'new title' } }
 
         expect(response)
-          .to redirect_to paths.hyrax_test_simple_work_legacy_path(id: id, locale: :en)
+          .to redirect_to paths.send(work_route_path, id: work.id, locale: :en)
       end
 
       it 'updates the work metadata' do
-        patch :update, params: { id: id, test_simple_work: { title: 'new title' } }
+        patch :update, params: { id: work.id, test_simple_work: { title: 'new title' } }
 
-        expect(Hyrax.query_service.find_by(id: id))
+        expect(Hyrax.query_service.find_by(id: work.id))
           .to have_attributes title: contain_exactly('new title')
       end
 
@@ -530,7 +575,7 @@ RSpec.describe Hyrax::WorksControllerBehavior, :clean_repo, type: :controller do
         let(:uploads) { FactoryBot.create_list(:uploaded_file, 2, user: user) }
 
         it 'attaches the files' do
-          params = { id: id, test_simple_work: { title: 'comet in moominland' },
+          params = { id: work.id, test_simple_work: { title: 'comet in moominland' },
                      uploaded_files: uploads.map(&:id) }
 
           get :update, params: params
@@ -538,7 +583,7 @@ RSpec.describe Hyrax::WorksControllerBehavior, :clean_repo, type: :controller do
         end
 
         it 'sets the file visibility' do
-          params = { id: id,
+          params = { id: work.id,
                      test_simple_work: { title: 'comet in moominland',
                                          file_set: [{ uploaded_file_id: uploads.first.id, visibility: 'open' },
                                                     { uploaded_file_id: uploads.second.id, visibility: 'open' }] },
@@ -553,16 +598,27 @@ RSpec.describe Hyrax::WorksControllerBehavior, :clean_repo, type: :controller do
         let(:update_params) { { title: 'new title', visibility: 'open' } }
 
         it 'can make work public' do
-          patch :update, params: { id: id, test_simple_work: update_params }
+          patch :update, params: { id: work.id, test_simple_work: update_params }
 
           expect(Hyrax::VisibilityReader.new(resource: assigns(:curation_concern)).read).to eq 'open'
         end
 
         it 'saves the visibility' do
-          patch :update, params: { id: id, test_simple_work: update_params }
+          patch :update, params: { id: work.id, test_simple_work: update_params }
 
           expect(Hyrax::AccessControlList(assigns[:curation_concern]).permissions)
             .to include(have_attributes(mode: :read, agent: 'group/public'))
+        end
+      end
+
+      context 'and granting additional permissions' do
+        let(:update_params) { { title: 'comet in moominland', permissions_attributes: { "0" => { type: 'person', access: 'read', name: 'foo@bar.com' } } } }
+
+        it 'saves the visibility' do
+          post :update, params: { id: work.id, test_simple_work: update_params }
+
+          expect(Hyrax::AccessControlList(assigns[:curation_concern]).permissions)
+            .to include(have_attributes(mode: :read, agent: 'foo@bar.com'))
         end
       end
 
@@ -578,7 +634,7 @@ RSpec.describe Hyrax::WorksControllerBehavior, :clean_repo, type: :controller do
           end
 
           it 'stays on the edit form and flashes an error message' do
-            patch :update, params: { id: id, test_simple_work: update_params }
+            patch :update, params: { id: work.id, test_simple_work: update_params }
 
             expect(flash[:error]).to eq error_msg
             expect(response).to render_template(:edit)
@@ -596,7 +652,7 @@ RSpec.describe Hyrax::WorksControllerBehavior, :clean_repo, type: :controller do
           end
 
           it 'stays on the edit form and flashes an error message' do
-            patch :update, params: { id: id, test_simple_work: update_params }
+            patch :update, params: { id: work.id, test_simple_work: update_params }
 
             expect(flash[:error]).to eq error_msg
             expect(response).to render_template(:edit)

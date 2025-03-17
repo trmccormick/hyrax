@@ -13,10 +13,14 @@ Hyrax.config do |config|
   config.register_curation_concern :"namespaced_works/nested_work"
   # Injected via `rails g hyrax:work_resource Monograph`
   config.register_curation_concern :monograph
+  # Injected via `rails g hyrax:work_resource GenericWorkResource`
+  # config.register_curation_concern :generic_work_resource
 
   config.iiif_image_server = true
   config.work_requires_files = false
   config.citations = true
+
+  config.characterization_options = { ch12n_tool: ENV.fetch('CH12N_TOOL', 'fits').to_sym }
 
   # Returns a URL that resolves to an image provided by a IIIF image server
   config.iiif_image_url_builder = lambda do |file_id, base_url, size, format|
@@ -40,11 +44,15 @@ Hyrax.config do |config|
     config.browse_everything = nil
   end
 
-  # config.geonames_username = ''
+  config.geonames_username = ENV['GEONAMES_USERNAME'] || ''
 
   ##
   # Set the system-wide virus scanner
   config.virus_scanner = Hyrax::VirusScanner
+
+  # The default method used for Solr queries. Values are :get or :post.
+  # Post is suggested to prevent issues with URL length.
+  config.solr_default_method = :post
 
   ##
   # To index to the Valkyrie core, uncomment the following lines.
@@ -57,6 +65,19 @@ Hyrax.config do |config|
   # config.collection_model = 'Hyrax::PcdmCollection' # collection without basic metadata
   # config.collection_model = 'CollectionResource'    # collection with basic metadata
   # config.admin_set_model = 'Hyrax::AdministrativeSet'
+
+  # dassie needs legacy AF models
+  # If using Frayja/Frigg then use the resource they provide
+  if Hyrax.config.valkyrie_transition?
+    config.collection_model = 'CollectionResource'
+    config.admin_set_model = 'AdminSetResource'
+    config.file_set_model = 'Hyrax::FileSet'
+  else
+    # dassie needs legacy AF models
+    config.collection_model = '::Collection'
+    config.admin_set_model = 'AdminSet'
+    config.file_set_model = '::FileSet'
+  end
 end
 
 Date::DATE_FORMATS[:standard] = "%m/%d/%Y"

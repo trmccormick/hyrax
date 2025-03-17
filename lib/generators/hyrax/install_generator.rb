@@ -26,13 +26,14 @@ module Hyrax
      * Generates mailboxer
   10. Adds Hyrax's abilities into the Ability class
   11. Adds controller behavior to the application controller
-  12. Copies the catalog controller into the local app
-  13. Installs hyrax assets
-  14. Updates simple_form to use browser validations
-  15. Installs Blacklight gallery (and removes it's scss)
-  16. Install jquery-datatables
-  17. Initializes the noid-rails database-backed minter
-  18. Generates RIIIF image server implementation
+  12. Adds listener template and publisher initializer
+  13. Copies the catalog controller into the local app
+  14. Installs hyrax assets
+  15. Updates simple_form to use browser validations
+  16. Installs Blacklight gallery (and removes it's scss)
+  17. Install jquery-datatables
+  18. Initializes the noid-rails database-backed minter
+  19. Generates RIIIF image server implementation
          """
 
     def run_required_generators
@@ -45,13 +46,15 @@ module Hyrax
     end
 
     def replace_blacklight_layout
-      gsub_file 'app/controllers/application_controller.rb', /layout 'blacklight'/,
+      gsub_file 'app/controllers/application_controller.rb', /layout :determine_layout.+$/,
                 "include Hyrax::ThemedLayoutController\n  with_themed_layout '1_column'\n"
     end
 
     def insert_builder
-      insert_into_file 'app/models/search_builder.rb', after: /include Hydra::AccessControlsEnforcement/ do
-        "\n  include Hyrax::SearchFilters\n"
+      insert_into_file 'app/models/search_builder.rb', after: /include Blacklight::Solr::SearchBuilderBehavior/ do
+        "\n  # Add a filter query to restrict the search to documents the current user has access to\n"\
+        "  include Hydra::AccessControlsEnforcement\n"\
+        "  include Hyrax::SearchFilters\n"
       end
     end
 
@@ -67,10 +70,6 @@ module Hyrax
         "  root 'hyrax/homepage#index'\n"\
         "  curation_concerns_basic_routes\n"\
       end
-    end
-
-    def catalog_controller
-      copy_file "catalog_controller.rb", "app/controllers/catalog_controller.rb"
     end
 
     # Add behaviors to the SolrDocument model
@@ -111,6 +110,12 @@ module Hyrax
       end
     end
 
+    # add listener code to provide developers a hint that listening to events
+    # is a good development pattern
+    def inject_listeners
+      generate "hyrax:listeners"
+    end
+
     # Add behaviors to the application controller
     def inject_hyrax_application_controller_behavior
       file_path = "app/controllers/application_controller.rb"
@@ -124,12 +129,22 @@ module Hyrax
       end
     end
 
+    def catalog_controller
+      copy_file "catalog_controller.rb", "app/controllers/catalog_controller.rb"
+    end
+
     def copy_helper
       copy_file 'hyrax_helper.rb', 'app/helpers/hyrax_helper.rb'
     end
 
     def qa_tables
       generate 'qa:local:tables'
+    end
+
+    def inject_required_seeds
+      insert_into_file 'db/seeds.rb' do
+        'Hyrax::RequiredDataSeeder.new.generate_seed_data'
+      end
     end
 
     def install_assets
@@ -151,21 +166,13 @@ module Hyrax
 
     def datatables
       javascript_manifest = 'app/assets/javascripts/application.js'
-      # Generator is broken https://github.com/rweng/jquery-datatables-rails/issues/225
-      # generate 'jquery:datatables:install bootstrap3'
       insert_into_file javascript_manifest, after: /jquery.?\n/ do
-        "//= require jquery_ujs\n" \
-        "//= require dataTables/jquery.dataTables\n" \
-        "//= require dataTables/bootstrap/3/jquery.dataTables.bootstrap\n"
+        "//= require jquery.dataTables\n" \
+        "//= require dataTables.bootstrap4\n"
       end
 
-      # This is only necessary for Rails 5.1 and hopefully is temporary.
-      # There was some trouble getting the file-manager javascript (remote forms) to work well
-      # with rails-ujs. Note jquery_ujs was added to the block above (after jQuery)
-      gsub_file javascript_manifest, 'require rails-ujs', ''
-
       insert_into_file 'app/assets/stylesheets/application.css', before: ' *= require_self' do
-        " *= require dataTables/bootstrap/3/jquery.dataTables.bootstrap\n"
+        " *= require dataTables.bootstrap4\n"
       end
     end
 
@@ -181,18 +188,31 @@ module Hyrax
       generate 'hyrax:riiif' unless options[:'skip-riiif']
     end
 
-    def universalviewer_files
-      rake('hyrax:universal_viewer:install')
+    def insert_application_config
+      insert_into_file 'config/application.rb', after: /config\.load_defaults [0-9.]+$/ do
+        "\n    config.active_job.queue_adapter = ENV.fetch('HYRAX_ACTIVE_JOB_QUEUE') { 'async' }.to_sym\n"
+      end
     end
 
-    # Blacklight::Controller will by default add an after_action filter to discard all flash messages on xhr requests.
-    # This has caused problems when we perform a post-redirect-get cycle using xhr and turbolinks.
-    # This injector will modify the generated ApplicationController to skip this action.
-    # TODO: This may be removed in Blacklight 7.x, so we'll likely need to remove this after updating.
-    def inject_skip_blacklilght_flash_discarding
-      insert_into_file "app/controllers/application_controller.rb", after: "include Blacklight::Controller\n" do
-        "  skip_after_action :discard_flash_if_xhr\n"
+    def universalviewer_files
+      rake('hyrax:universal_viewer:install')
+      rake('yarn:install')
+    end
+
+    def lando
+      copy_file '.lando.yml'
+    end
+
+    def dotenv
+      copy_file '.env'
+      gem_group :development, :test do
+        gem 'dotenv-rails', '~> 2.8'
       end
+    end
+
+    def support_analytics
+      gem 'google-protobuf', force_ruby_platform: true # required because google-protobuf is not compatible with Alpine linux
+      gem 'grpc', force_ruby_platform: true # required because grpc is not compatible with Alpine linux
     end
   end
 end

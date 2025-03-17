@@ -1,8 +1,11 @@
 # frozen_string_literal: true
+
+return unless defined? Hyrax::Actors::GenericWorkActor
+
 require 'redlock'
 require 'hyrax/specs/spy_listener'
 
-RSpec.describe Hyrax::Actors::GenericWorkActor do
+RSpec.describe Hyrax::Actors::GenericWorkActor, :active_fedora do
   include ActionDispatch::TestProcess
   let(:env) { Hyrax::Actors::Environment.new(curation_concern, ability, attributes) }
   let(:user) { create(:user) }
@@ -25,7 +28,7 @@ RSpec.describe Hyrax::Actors::GenericWorkActor do
 
   describe '#create' do
     let(:curation_concern) { create(:generic_work, user: user) }
-    let(:xmas) { DateTime.parse('2014-12-25 11:30').iso8601 }
+    let(:xmas) { DateTime.parse('2014-12-25 11:30') }
     let(:attributes) { {} }
     let(:file) { fixture_file_upload('/world.png', 'image/png') }
     let(:uploaded_file) { Hyrax::UploadedFile.create(file: file, user: user) }

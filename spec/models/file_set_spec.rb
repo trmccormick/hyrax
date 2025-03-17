@@ -2,7 +2,7 @@
 # This tests the FileSet model that is inserted into the host app by hyrax:models
 # It includes the Hyrax::FileSetBehavior module and nothing else
 # So this test covers both the FileSetBehavior module and the generated FileSet model
-RSpec.describe FileSet do
+RSpec.describe FileSet, :active_fedora do
   include Hyrax::FactoryHelpers
 
   let(:user) { create(:user) }
@@ -36,6 +36,7 @@ RSpec.describe FileSet do
     it "does not be changed when it's new" do
       expect(subject).not_to be_visibility_changed
     end
+
     it 'is changed when it has been changed' do
       subject.visibility = 'open'
       expect(subject).to be_visibility_changed

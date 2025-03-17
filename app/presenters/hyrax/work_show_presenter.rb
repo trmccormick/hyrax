@@ -16,13 +16,6 @@ module Hyrax
     self.collection_presenter_class = CollectionPresenter
     self.presenter_factory_class = MemberPresenterFactory
 
-    # Methods used by blacklight helpers
-    delegate :has?, :first, :fetch, :export_formats, :export_as, to: :solr_document
-
-    # delegate fields from Hyrax::Works::Metadata to solr_document
-    delegate :based_near_label, :related_url, :depositor, :identifier, :resource_type,
-             :keyword, :itemtype, :admin_set, :rights_notes, :access_right, :abstract, to: :solr_document
-
     # @param [SolrDocument] solr_document
     # @param [Ability] current_ability
     # @param [ActionDispatch::Request] request the http request context. Used so
@@ -33,19 +26,13 @@ module Hyrax
       @request = request
     end
 
+    # We cannot rely on the method missing to catch this delegation.  Because
+    # most all objects implicitly implicitly implement #to_s
+    delegate :to_s, to: :solr_document
+
     def page_title
       "#{human_readable_type} | #{title.first} | ID: #{id} | #{I18n.t('hyrax.product_name')}"
     end
-
-    # CurationConcern methods
-    delegate :stringify_keys, :human_readable_type, :collection?, :to_s, :suppressed?,
-             to: :solr_document
-
-    # Metadata Methods
-    delegate :title, :date_created, :description,
-             :creator, :contributor, :subject, :publisher, :language, :embargo_release_date,
-             :lease_expiration_date, :license, :source, :rights_statement, :thumbnail_id, :representative_id,
-             :rendering_ids, :member_of_collection_ids, :alternative_title, to: :solr_document
 
     def workflow
       @workflow ||= WorkflowPresenter.new(solr_document, current_ability)
@@ -63,10 +50,10 @@ module Hyrax
 
     # @return [Boolean] render a IIIF viewer
     def iiif_viewer?
-      representative_id.present? &&
+      Hyrax.config.iiif_image_server? &&
+        representative_id.present? &&
         representative_presenter.present? &&
         representative_presenter.image? &&
-        Hyrax.config.iiif_image_server? &&
         members_include_viewable_image?
     end
 
@@ -98,6 +85,9 @@ module Hyrax
           result = member_presenters([representative_id]).first
           return nil if result.try(:id) == id
           result.try(:representative_presenter) || result
+        rescue Hyrax::ObjectNotFoundError
+          Hyrax.logger.warn "Unable to find representative_id #{representative_id} for work #{id}"
+          return nil
         end
     end
 
@@ -155,8 +145,8 @@ module Hyrax
       # TODO: we probably need to retain collection_presenters (as parent_presenters)
       #       and join this with member_of_collection_presenters
       grouped = member_of_collection_presenters.group_by(&:model_name).transform_keys(&:human)
-      grouped.select! { |obj| obj.downcase == filtered_by } unless filtered_by.nil?
-      grouped.except!(*except) unless except.nil?
+      grouped.select! { |obj| obj.casecmp(filtered_by).zero? } unless filtered_by.nil?
+      grouped.reject! { |obj| except.map(&:downcase).include? obj.downcase } unless except.nil?
       grouped
     end
 
@@ -185,16 +175,6 @@ module Hyrax
     # @return [Array] list to display with Kaminari pagination
     def list_of_item_ids_to_display
       paginated_item_list(page_array: authorized_item_ids)
-    end
-
-    ##
-    # @deprecated use `#member_presenters(ids)` instead
-    #
-    # @param [Array<String>] ids a list of ids to build presenters for
-    # @return [Array<presenter_class>] presenters for the array of ids (not filtered by class)
-    def member_presenters_for(an_array_of_ids)
-      Deprecation.warn("Use `#member_presenters` instead.")
-      member_presenters(an_array_of_ids)
     end
 
     # @return [Integer] total number of pages of viewable items
@@ -259,7 +239,21 @@ module Hyrax
       Hyrax::ChildTypes.for(parent: solr_document.hydra_model).to_a
     end
 
+    # @return [Boolean]
+    def valkyrie_presenter?
+      solr_document.hydra_model < Valkyrie::Resource
+    end
+
     private
+
+    def method_missing(method_name, *args, &block)
+      return solr_document.public_send(method_name, *args, &block) if solr_document.respond_to?(method_name)
+      super
+    end
+
+    def respond_to_missing?(method_name, include_private = false)
+      solr_document.respond_to?(method_name, include_private) || super
+    end
 
     # list of item ids to display is based on ordered_ids
     def authorized_item_ids(filter_unreadable: Flipflop.hide_private_items?)
@@ -305,7 +299,7 @@ module Hyrax
 
     def member_presenter_factory
       @member_presenter_factory ||=
-        if solr_document.hydra_model < Valkyrie::Resource
+        if valkyrie_presenter?
           PcdmMemberPresenterFactory.new(solr_document, current_ability)
         else
           self.class

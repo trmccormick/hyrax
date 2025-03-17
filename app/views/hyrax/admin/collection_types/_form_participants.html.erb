@@ -1,6 +1,8 @@
 <h3><%= t('.add_participants') %></h3>
 <p><%= t('.instructions') %></p>
-<% access_options = options_for_select([['Manager', Hyrax::CollectionTypeParticipant::MANAGE_ACCESS], ['Creator', Hyrax::CollectionTypeParticipant::CREATE_ACCESS]]) %>
+<% access_options = options_for_select([
+    [t('hyrax.dashboard.collections.form_share.access_options.manager'), Hyrax::CollectionTypeParticipant::MANAGE_ACCESS],
+    [t('hyrax.dashboard.collections.form_share.access_options.creator'), Hyrax::CollectionTypeParticipant::CREATE_ACCESS]]) %>
 <% unless @collection_type_participant.nil? %>
 
   <section class="section-participants">
@@ -11,9 +13,9 @@
                           html: { id: 'group-participants-form' },
                           as: :collection_type_participant do |f| %>
             <div class="form-inline add-participants-form">
-            <label class="col-md-2 col-xs-4 control-label"><%= t('.add_group') %>:</label>
+            <label class="col-md-2 col-4 col-form-label"><%= t('.add_group') %>:</label>
 
-            <div class="col-md-10 col-xs-8 form-group">
+            <div class="col-md-10 col-8 form-group">
               <%= f.hidden_field :hyrax_collection_type_id, value: @collection_type_participant.hyrax_collection_type_id %>
               <%= f.hidden_field :agent_type, value: Hyrax::CollectionTypeParticipant::GROUP_TYPE %>
               <%= f.text_field :agent_id,
@@ -38,9 +40,9 @@
                           html: { id: 'user-participants-form' },
                           as: :collection_type_participant do |f| %>
             <div class="form-inline add-participants-form">
-              <label class="col-md-2 col-xs-4 control-label"><%= t('.add_user') %>:</label>
+              <label class="col-md-2 col-4 col-form-label"><%= t('.add_user') %>:</label>
 
-              <div class="col-md-10 col-xs-8 form-group">
+              <div class="col-md-10 col-8 form-group">
                 <%= f.hidden_field :hyrax_collection_type_id, value: @collection_type_participant.hyrax_collection_type_id %>
                 <%= f.hidden_field :agent_type, value: Hyrax::CollectionTypeParticipant::USER_TYPE %>
                 <%= f.text_field :agent_id,

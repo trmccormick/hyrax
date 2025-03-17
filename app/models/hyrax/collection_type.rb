@@ -36,14 +36,6 @@ module Hyrax
       assign_machine_id
     end
 
-    # this class attribute is deprecated in favor of {.settings_attributes}
-    # these need to carefully align with boolean flag attributes/table columns,
-    # so making it settable is a liability. deprecating is challenging because
-    # +class_attribute+ calls +singleton_class.class_eval { redefine_method }+
-    # as the +name=+ implementation. there should be few callers outside hyrax.
-    class_attribute :collection_type_settings_methods, instance_writer: false
-    self.collection_type_settings_methods = SETTINGS_ATTRIBUTES
-
     # These are provided as a convenience method based on prior design discussions.
     alias_attribute :discovery, :discoverable
     alias_attribute :sharing, :sharable
@@ -51,6 +43,17 @@ module Hyrax
     alias_attribute :workflow, :assigns_workflow
     alias_attribute :visibility, :assigns_visibility
     alias_attribute :branding, :brandable
+
+    # Find the collection type associated with the collection
+    # @param [::Collection, Hyrax::PcdmCollection] collection
+    # @return [Hyrax::PcdmCollection | ::Collection] an instance of Hyrax::CollectionType with id = the model_id portion of the gid (e.g. 3)
+    # @raise [ActiveRecord::RecordNotFound] if record matching gid is not found
+    def self.for(collection:)
+      gid = collection.collection_type_gid
+      gid = gid.first if gid.is_a?(Enumerable)
+
+      find_by_gid!(gid)
+    end
 
     # Find the collection type associated with the Global Identifier (gid)
     # @param [String] gid - Global Identifier for this collection_type (e.g. gid://internal/hyrax-collectiontype/3)
@@ -67,7 +70,7 @@ module Hyrax
     # @see #gid
     # @see Hyrax::MultipleMembershipChecker
     def self.gids_that_do_not_allow_multiple_membership
-      where(allow_multiple_membership: false).map(&:gid)
+      where(allow_multiple_membership: false).map { |c| c.to_global_id.to_s }
     end
 
     # Find the collection type associated with the Global Identifier (gid)
@@ -78,7 +81,7 @@ module Hyrax
       raise(URI::InvalidURIError) if gid.nil?
       GlobalID::Locator.locate(gid)
     rescue NameError
-      Rails.logger.warn "#{self.class}##{__method__} called with #{gid}, which is " \
+      Hyrax.logger.warn "#{self.class}##{__method__} called with #{gid}, which is " \
                         "a legacy collection type global id format. If this " \
                         "collection type gid is attached to a collection in " \
                         "your repository you'll want to run " \
@@ -96,31 +99,19 @@ module Hyrax
     end
 
     ##
-    # @deprecation use #to_global_id
-    #
-    # Return the Global Identifier for this collection type.
-    # @return [String, nil] Global Identifier (gid) for this collection_type (e.g. gid://internal/hyrax-collectiontype/3)
-    #
-    # @see https://github.com/rails/globalid#usage
-    def gid
-      Deprecation.warn('use #to_global_id.')
-      to_global_id.to_s if id
-    end
-
-    ##
     # @return [Enumerable<Collection, PcdmCollection>]
-    def collections(use_valkyrie: Hyrax.config.use_valkyrie?)
+    def collections(use_valkyrie: Hyrax.config.use_valkyrie?, model: Hyrax.config.collection_class)
       return [] unless id
-      return Hyrax.custom_queries.find_collections_by_type(global_id: to_global_id.to_s) if use_valkyrie
+      return Hyrax.custom_queries.find_collections_by_type(global_id: to_global_id.to_s, model:) if use_valkyrie
       ActiveFedora::Base.where(Hyrax.config.collection_type_index_field.to_sym => to_global_id.to_s)
     end
 
-    ##
-    # @deprecated Use #collections.any? instead
-    #
-    # @return [Boolean] True if there is at least one collection of this type
+    # Query solr to see if any collections of this type exist
+    # This should be much more performant for certain adapters than calling collections.any?
+    # @return [Boolean] True if there are any collections of this collection type in the repository
     def collections?
-      Deprecation.warn('Use #collections.any? instead.') && collections.any?
+      return false unless id
+      Hyrax::SolrQueryService.new.with_field_pairs(field_pairs: { Hyrax.config.collection_type_index_field.to_sym => to_global_id.to_s }).with_model(model: Hyrax.config.collection_class.to_rdf_representation).count > 0
     end
 
     # @return [Boolean] True if this is the Admin Set type
@@ -171,27 +162,27 @@ module Hyrax
     end
 
     def ensure_no_collections
-      return true unless collections.any?
-      errors[:base] << I18n.t('hyrax.admin.collection_types.errors.not_empty')
+      return true unless collections?
+      errors.add(:base, I18n.t('hyrax.admin.collection_types.errors.not_empty'))
       throw :abort
     end
 
     def ensure_no_settings_changes_for_admin_set_type
       return true unless admin_set? && collection_type_settings_changed? && exists_for_machine_id?(ADMIN_SET_MACHINE_ID)
-      errors[:base] << I18n.t('hyrax.admin.collection_types.errors.no_settings_change_for_admin_sets')
+      errors.add(:base, I18n.t('hyrax.admin.collection_types.errors.no_settings_change_for_admin_sets'))
       throw :abort
     end
 
     def ensure_no_settings_changes_for_user_collection_type
       return true unless user_collection? && collection_type_settings_changed? && exists_for_machine_id?(USER_COLLECTION_MACHINE_ID)
-      errors[:base] << I18n.t('hyrax.admin.collection_types.errors.no_settings_change_for_user_collections')
+      errors.add(:base, I18n.t('hyrax.admin.collection_types.errors.no_settings_change_for_user_collections'))
       throw :abort
     end
 
     def ensure_no_settings_changes_if_collections_exist
-      return true unless collections.any?
+      return true unless collections?
       return true unless collection_type_settings_changed?
-      errors[:base] << I18n.t('hyrax.admin.collection_types.errors.no_settings_change_if_not_empty')
+      errors.add(:base, I18n.t('hyrax.admin.collection_types.errors.no_settings_change_if_not_empty'))
       throw :abort
     end
 

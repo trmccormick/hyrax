@@ -12,6 +12,10 @@ module Hyrax
       # This is needed as of BL 3.7
       copy_blacklight_config_from(::CatalogController)
 
+      before_action do
+        blacklight_config.track_search_session = false
+      end
+
       class_attribute :presenter_class,
                       :form_class,
                       :single_item_search_builder_class,
@@ -32,6 +36,11 @@ module Hyrax
       @curation_concern = @collection # we must populate curation_concern
       presenter
       query_collection_members
+
+      respond_to do |format|
+        format.html
+        format.json { render 'hyrax/base/show' }
+      end
     end
 
     def collection
@@ -57,13 +66,6 @@ module Hyrax
       Hyrax::SearchService.new(config: blacklight_config, user_params: params.except(:q, :page), scope: self, search_builder_class: single_item_search_builder_class)
     end
 
-    # Instantiates the search builder that builds a query for a single item
-    # this is useful in the show view.
-    def single_item_search_builder
-      search_service.search_builder
-    end
-    deprecation_deprecate :single_item_search_builder
-
     def collection_params
       form_class.model_attributes(params[:collection])
     end
@@ -74,11 +76,15 @@ module Hyrax
       @_prefixes ||= super + ['catalog', 'hyrax/base']
     end
 
+    # rubocop:disable Style/GuardClause
     def query_collection_members
       load_member_works
-      load_member_subcollections if collection.collection_type.nestable?
-      load_parent_collections if collection.collection_type.nestable? && action_name == 'show'
+      if Hyrax::CollectionType.for(collection: collection).nestable?
+        load_member_subcollections
+        load_parent_collections if action_name == 'show'
+      end
     end
+    # rubocop:enable Style/GuardClause
 
     # Instantiate the membership query service
     def collection_member_service

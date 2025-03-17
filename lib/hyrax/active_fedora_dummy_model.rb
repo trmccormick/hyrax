@@ -37,8 +37,21 @@ module Hyrax
 
     ##
     # @api public
+    def to_key
+      [@id]
+    end
+
+    ##
+    # @api public
     def model_name
       @model.model_name
+    end
+
+    ##
+    # @api public
+    # @return [String]
+    def human_readable_type
+      @model.human_readable_type
     end
 
     ##
@@ -56,7 +69,12 @@ module Hyrax
     ##
     # @api public
     def to_global_id
-      URI::GID.build app: GlobalID.app, model_name: model_name.name, model_id: @id
+      # this covers the use case of creating a non Valkyrie::Resource, while using Valkyrie
+      if model_name.name.constantize <= Valkyrie::Resource
+        URI::GID.build app: GlobalID.app, model_name: Hyrax::ValkyrieGlobalIdProxy.to_s, model_id: @id
+      else
+        URI::GID.build app: GlobalID.app, model_name: model_name.name, model_id: @id
+      end
     end
   end
 end

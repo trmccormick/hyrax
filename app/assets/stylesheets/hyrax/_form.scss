@@ -1,5 +1,9 @@
 .form-tab-content {
   margin: 15px 10px;
+
+  label {
+    font-weight: bold;
+  }
 }
 
 // For the admin page //
@@ -8,10 +12,9 @@ td.status {
   font-size: 1.1rem;
 
   span {
-    @extend .label;
     @extend .badge;
-    &.on { @extend .label-success; }
-    &.off { @extend .label-default; }
+    &.on { @extend .badge-success; }
+    &.off { @extend .badge-secondary; }
   }
 }
 
@@ -20,7 +23,7 @@ td.toggle {
     @extend .btn;
     @extend .btn-sm;
     &.active { @extend .btn-primary; }
-    &:not(.active) { @extend .btn-default; }
+    &:not(.active) { @extend .btn-secondary; }
   }
 }
 

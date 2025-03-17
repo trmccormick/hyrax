@@ -52,6 +52,14 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end }}
 
 {{/*
+Worker Selector labels
+*/}}
+{{- define "hyrax.workerSelectorLabels" -}}
+app.kubernetes.io/name: {{ include "hyrax.name" . }}-worker
+app.kubernetes.io/instance: {{ .Release.Name }}
+{{- end }}
+
+{{/*
 Create the name of the service account to use
 */}}
 {{- define "hyrax.serviceAccountName" -}}
@@ -78,6 +86,23 @@ We truncate at 63 chars because some Kubernetes name fields are limited to this 
 {{- end }}
 {{- end -}}
 
+
+{{/*
+Create default fully qualified service names.
+We truncate at 63 chars because some Kubernetes name fields are limited to this (by the DNS naming spec).
+*/}}
+{{- define "hyrax.fits.fullname" -}}
+{{- printf "%s-%s" .Release.Name "fits" | trunc 63 | trimSuffix "-" -}}
+{{- end -}}
+
+{{- define "hyrax.fits.host" -}}
+{{- if .Values.fits.enabled }}
+{{- include "hyrax.fits.fullname" . }}
+{{- else }}
+{{- .Values.externalFitsHost | default "NO_FITS_HOST_DEFINED" }}
+{{- end }}
+{{- end -}}
+
 {{- define "hyrax.memcached.fullname" -}}
 {{- printf "%s-%s" .Release.Name "memcached" | trunc 63 | trimSuffix "-" -}}
 {{- end -}}
@@ -100,7 +125,7 @@ We truncate at 63 chars because some Kubernetes name fields are limited to this 
 
 {{- define "hyrax.postgresql.database" -}}
 {{- if .Values.postgresql.enabled }}
-{{- .Values.postgresql.postgresqlDatabase }}
+{{- .Values.postgresql.auth.database }}
 {{- else }}
 {{- .Values.externalPostgresql.database | default ( include "hyrax.fullname" . ) }}
 {{- end }}
@@ -108,7 +133,7 @@ We truncate at 63 chars because some Kubernetes name fields are limited to this 
 
 {{- define "hyrax.postgresql.username" -}}
 {{- if .Values.postgresql.enabled }}
-{{- .Values.postgresql.postgresqlUsername }}
+{{- .Values.postgresql.auth.username }}
 {{- else }}
 {{- .Values.externalPostgresql.username | default "postgres" }}
 {{- end }}
@@ -116,10 +141,22 @@ We truncate at 63 chars because some Kubernetes name fields are limited to this 
 
 {{- define "hyrax.postgresql.password" -}}
 {{- if .Values.postgresql.enabled }}
-{{- .Values.postgresql.postgresqlPassword }}
+{{- .Values.postgresql.auth.password }}
 {{- else }}
 {{- .Values.externalPostgresql.password }}
 {{- end }}
+{{- end -}}
+
+{{- define "hyrax.postgresql.port" -}}
+{{- if .Values.postgresql.enabled }}
+{{- .Values.postgresql.containerPorts.postgresql | default 5432 }}
+{{- else }}
+{{- .Values.externalPostgresql.port | default 5432 }}
+{{- end }}
+{{- end -}}
+
+{{- define "hyrax.postgresql.url" -}}
+{{- printf "postgresql://%s:%s@%s/%s?pool=5" ( include "hyrax.postgresql.username" . ) ( include "hyrax.postgresql.password" . ) ( include "hyrax.postgresql.host" . ) ( include "hyrax.postgresql.database" . ) -}}
 {{- end -}}
 
 {{- define "hyrax.redis.fullname" -}}
@@ -149,7 +186,7 @@ We truncate at 63 chars because some Kubernetes name fields are limited to this 
 
 {{- define "hyrax.solr.username" -}}
 {{- if .Values.solr.enabled }}
-{{- .Values.solr.authentication.adminUsername }}
+{{- .Values.solr.auth.adminUsername }}
 {{- else }}
 {{- .Values.externalSolrUser }}
 {{- end }}
@@ -157,14 +194,22 @@ We truncate at 63 chars because some Kubernetes name fields are limited to this 
 
 {{- define "hyrax.solr.password" -}}
 {{- if .Values.solr.enabled }}
-{{- .Values.solr.authentication.adminPassword }}
+{{- .Values.solr.auth.adminPassword }}
 {{- else }}
 {{- .Values.externalSolrPassword }}
 {{- end }}
 {{- end -}}
 
+{{- define "hyrax.solr.port" -}}
+{{- if .Values.solr.enabled }}
+{{- .Values.solr.containerPorts.http | default 8983 }}
+{{- else }}
+{{- .Values.externalSolrPort }}
+{{- end }}
+{{- end -}}
+
 {{- define "hyrax.solr.url" -}}
-{{- printf "http://%s:%s@%s:%s/solr/%s" (include "hyrax.solr.username" .) (include "hyrax.solr.password" .) (include "hyrax.solr.host" .) "8983" (include "hyrax.solr.collectionName" .)  -}}
+{{- printf "http://%s:%s@%s:%s/solr/%s" (include "hyrax.solr.username" .) (include "hyrax.solr.password" .) (include "hyrax.solr.host" .) (include "hyrax.solr.port" .) (include "hyrax.solr.collectionName" .)  -}}
 {{- end -}}
 
 {{- define "hyrax.zk.fullname" -}}
@@ -176,7 +221,7 @@ We truncate at 63 chars because some Kubernetes name fields are limited to this 
 {{- end -}}
 
 {{- define "hyrax.redis.url" -}}
-{{- printf "redis://:%s@%s:%s" .Values.redis.password (include "hyrax.redis.host" .) "6379/0" -}}
+{{- printf "redis://:%s@%s:%s" .Values.redis.auth.password (include "hyrax.redis.host" .) "6379/0" -}}
 {{- end -}}
 
 {{- define "hyrax.nginx.host" -}}

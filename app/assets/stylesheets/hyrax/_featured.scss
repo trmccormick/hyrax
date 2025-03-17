@@ -27,7 +27,7 @@ ol#featured_works {
   }
 
   .main {
-    padding: $padding-small-vertical;
+    padding: $custom-select-padding-y-sm;
   }
 
   .featured-label {
@@ -43,4 +43,8 @@ ol#featured_works {
 .featured-researcher {
   padding: 1em 0;
   border-bottom: 1px dotted $gray-lighter;
+}
+
+.dd-handle.dd3-handle {
+  z-index: 1;
 }

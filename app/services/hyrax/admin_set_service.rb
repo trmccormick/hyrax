@@ -15,7 +15,7 @@ module Hyrax
 
     # @param [Symbol] access :deposit, :read or :edit
     def search_results(access)
-      response = context.repository.search(builder(access))
+      response = context.blacklight_config.repository.search(builder(access))
       response.documents
     end
 
@@ -51,9 +51,10 @@ module Hyrax
     # @return [Hash] admin set id keys and file count values
     def count_files(admin_sets)
       file_counts = Hash.new(0)
+      file_set_models = Hyrax::ModelRegistry.file_set_rdf_representations
       admin_sets.each do |admin_set|
-        query = "{!join from=file_set_ids_ssim to=id}isPartOf_ssim:#{admin_set.id}"
-        file_results = Hyrax::SolrService.get(fq: [query, "has_model_ssim:FileSet"], rows: 0)
+        query = "{!join from=member_ids_ssim to=id}isPartOf_ssim:#{admin_set.id}"
+        file_results = Hyrax::SolrService.get(fq: [query, "{!terms f=has_model_ssim}#{file_set_models.join(',')}"], rows: 0)
         file_counts[admin_set.id] = file_results['response']['numFound']
       end
       file_counts

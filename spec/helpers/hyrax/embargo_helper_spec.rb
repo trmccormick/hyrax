@@ -79,7 +79,7 @@ RSpec.describe Hyrax::EmbargoHelper do
       end
     end
 
-    context 'with an ActiveFedora resource' do
+    context 'with an ActiveFedora resource', :active_fedora do
       let(:resource) { build(:work) }
 
       it 'returns false' do
@@ -108,7 +108,7 @@ RSpec.describe Hyrax::EmbargoHelper do
       end
     end
 
-    context 'with a HydraEditor::Form' do
+    context 'with a HydraEditor::Form (ActiveFedora)', :active_fedora do
       let(:resource) { Hyrax::GenericWorkForm.new(model, ability, form_controller) }
       let(:model) { build(:work) }
       let(:ability) { :FAKE_ABILITY }
@@ -130,7 +130,7 @@ RSpec.describe Hyrax::EmbargoHelper do
       end
     end
 
-    context 'with a Hyrax::Forms::FailedSubmissionFormWrapper' do
+    context 'with a Hyrax::Forms::FailedSubmissionFormWrapper (ActiveFedora)', :active_fedora do
       let(:resource) { Hyrax::Forms::FailedSubmissionFormWrapper.new(form: form, input_params: {}, permitted_params: {}) }
       let(:form) { Hyrax::GenericWorkForm.new(model, ability, form_controller) }
       let(:model) { build(:work) }
@@ -148,6 +148,49 @@ RSpec.describe Hyrax::EmbargoHelper do
           # This allow call is a tweak to preserve spec for pre #4845 patch
           allow(model).to receive(:persisted?).and_return(true)
           expect(embargo_enforced?(resource)).to be true
+        end
+      end
+    end
+  end
+
+  describe '#embargo_history' do
+    context 'with an ActiveFedora resource', :active_fedora do
+      let(:resource) { FactoryBot.build(:work) }
+
+      it 'is empty' do
+        expect(embargo_history(resource)).to be_empty
+      end
+
+      context 'when the resource is under embargo' do
+        let(:resource) { FactoryBot.build(:embargoed_work) }
+
+        before do
+          resource.embargo.embargo_history << "updated the lease"
+        end
+
+        it 'has a history' do
+          expect(embargo_history(resource)).to contain_exactly("updated the lease")
+        end
+      end
+    end
+
+    context 'with a Hyrax::Work' do
+      let(:resource) { FactoryBot.build(:hyrax_work) }
+
+      it 'is empty' do
+        expect(embargo_history(resource)).to be_empty
+      end
+
+      context 'when the resource is under embargo' do
+        let(:resource) { FactoryBot.build(:hyrax_work, :under_embargo) }
+
+        before do
+          resource.embargo.embargo_history = ['Embargo in place!', 'Embargo expired!']
+        end
+
+        it 'contains the lease history' do
+          expect(embargo_history(resource))
+            .to contain_exactly 'Embargo in place!', 'Embargo expired!'
         end
       end
     end

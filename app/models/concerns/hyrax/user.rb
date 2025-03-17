@@ -34,12 +34,12 @@ module Hyrax::User
     scope :without_system_accounts, -> { where("#{::User.user_key_field} not in (?)", [::User.batch_user_key, ::User.audit_user_key, ::User.system_user_key]) }
 
     # Validate and normalize ORCIDs
-    validates_with OrcidValidator
+    validates_with Hyrax::OrcidValidator
     after_validation :normalize_orcid
 
     # Set up user profile avatars
-    mount_uploader :avatar, AvatarUploader, mount_on: :avatar_file_name
-    validates_with AvatarValidator
+    mount_uploader :avatar, Hyrax::AvatarUploader, mount_on: :avatar_file_name
+    validates_with Hyrax::AvatarValidator
 
     # Add token to authenticate Arkivo API calls
     after_initialize :set_arkivo_token, unless: :persisted? if Hyrax.config.arkivo_api?
@@ -51,6 +51,13 @@ module Hyrax::User
 
   def user_key
     public_send(self.class.user_key_field)
+  end
+
+  ##
+  # @return [String] a local identifier for this user; for use (e.g.) in ACL
+  #   data
+  def agent_key
+    user_key
   end
 
   # Look for, in order:
@@ -175,6 +182,10 @@ module Hyrax::User
 
     def find_or_create_system_user(user_key)
       User.find_by_user_key(user_key) || User.create!(user_key_field => user_key, password: Devise.friendly_token[0, 20])
+    end
+
+    def from_agent_key(key)
+      User.find_by_user_key(key)
     end
 
     def from_url_component(component)

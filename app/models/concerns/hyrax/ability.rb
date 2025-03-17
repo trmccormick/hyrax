@@ -53,6 +53,7 @@ module Hyrax
       include Hyrax::Ability::CollectionAbility
       include Hyrax::Ability::CollectionTypeAbility
       include Hyrax::Ability::PermissionTemplateAbility
+      include Hyrax::Ability::ResourceAbility
       include Hyrax::Ability::SolrDocumentAbility
 
       class_attribute :admin_group_name, :registered_group_name, :public_group_name
@@ -76,6 +77,7 @@ module Hyrax
                              :collection_abilities,
                              :collection_type_abilities,
                              :permission_template_abilities,
+                             :resource_abilities,
                              :solr_document_abilities,
                              :trophy_abilities]
     end
@@ -86,7 +88,7 @@ module Hyrax
       doc = permissions_doc(id)
       return [] if doc.nil?
       groups = Array(doc[self.class.read_group_field]) + Array(doc[self.class.edit_group_field])
-      Rails.logger.debug("[CANCAN] download_groups: #{groups.inspect}")
+      Hyrax.logger.debug("[CANCAN] download_groups: #{groups.inspect}")
       groups
     end
 
@@ -95,14 +97,14 @@ module Hyrax
       doc = permissions_doc(id)
       return [] if doc.nil?
       users = Array(doc[self.class.read_user_field]) + Array(doc[self.class.edit_user_field])
-      Rails.logger.debug("[CANCAN] download_users: #{users.inspect}")
+      Hyrax.logger.debug("[CANCAN] download_users: #{users.inspect}")
       users
     end
 
     # Returns true if can create at least one type of work and they can deposit
     # into at least one AdminSet
     def can_create_any_work?
-      Hyrax.config.curation_concerns.any? do |curation_concern_type|
+      curation_concerns_models.any? do |curation_concern_type|
         can?(:create, curation_concern_type)
       end && admin_set_with_deposit?
     end
@@ -122,8 +124,8 @@ module Hyrax
     #
     # Overrides hydra-head, (and restores the method from blacklight-access-controls)
     def download_permissions
-      can :download, String do |id|
-        test_download(id)
+      can :download, [::String, ::Valkyrie::ID] do |id|
+        test_download(id.to_s)
       end
 
       can :download, ::SolrDocument do |obj|
@@ -187,8 +189,8 @@ module Hyrax
     #   self.ability_logic += [:proxy_deposit_abilities]
     def proxy_deposit_abilities
       if Flipflop.transfer_works?
-        can :transfer, String do |id|
-          user_is_depositor?(id)
+        can :transfer, [::String, Valkyrie::ID] do |id|
+          user_is_depositor?(id.to_s)
         end
       end
 
@@ -366,10 +368,11 @@ module Hyrax
       alias_action :show, to: :read
       alias_action :discover, to: :read
       can :update, :appearance
-      can :manage, String # The identifier of a work or FileSet
+      can :manage, [String, Valkyrie::ID] # The identifier of a work or FileSet
       can :manage, curation_concerns_models
       can :manage, Sipity::WorkflowResponsibility
       can :manage, :collection_types
+      can :manage, ::FileSet
     end
 
     ##
@@ -411,14 +414,14 @@ module Hyrax
     end
 
     # Returns true if the current user is the depositor of the specified work
-    # @param document_id [String] the id of the document.
+    # @param document_id [String, Valkyrie::ID] the id of the document.
     def user_is_depositor?(document_id)
-      doc = Hyrax::SolrService.search_by_id(document_id, fl: 'depositor_ssim')
-      current_user.user_key == doc.fetch('depositor_ssim').first
+      doc = Hyrax::SolrService.search_by_id(document_id.to_s, fl: 'depositor_ssim')
+      current_user.user_key == doc['depositor_ssim']&.first
     end
 
     def curation_concerns_models
-      [::FileSet, Hyrax.config.collection_class] + Hyrax.config.curation_concerns
+      Hyrax::ModelRegistry.collection_classes + Hyrax::ModelRegistry.file_set_classes + Hyrax::ModelRegistry.work_classes
     end
 
     def can_review_submissions?

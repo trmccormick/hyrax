@@ -22,13 +22,6 @@ module Hyrax
         default: [:"defaults.#{field}", field.to_s.humanize]).presence
     end
 
-    ##
-    # @deprecated
-    def fields(terms, &_block)
-      Deprecation.warn("Fields is deprecated for removal in Hyrax 4.0.0. use #value and #label directly instead.")
-      @view_context.safe_join(terms.map { |term| yield self, term })
-    end
-
     private
 
     def render_show_field_partial(field_name, locals)
@@ -39,7 +32,7 @@ module Hyrax
     def find_field_partial(field_name)
       ["#{collection_path}/show_fields/_#{field_name}", "records/show_fields/_#{field_name}",
        "#{collection_path}/show_fields/_default", "records/show_fields/_default"].find do |partial|
-        Rails.logger.debug "Looking for show field partial #{partial}"
+        Hyrax.logger.debug "Looking for show field partial #{partial}"
         return partial.sub(/\/_/, '/') if partial_exists?(partial)
       end
     end

@@ -9,13 +9,6 @@ module Hyrax
       delegate :access_grants, :access_grants_attributes=, :release_date, :release_period, :visibility, to: :model
       delegate :available_workflows, :active_workflow, :source, :source_id, to: :model
 
-      ##
-      # @deprecated  use PermissionTemplate#reset_access_controls_for instead.
-      def reset_access_controls!
-        Deprecation.warn("reset_access_controls! is deprecated; use PermissionTemplate#reset_access_controls_for instead.")
-        source_model.reset_access_controls!
-      end
-
       # Stores which radio button under release "Varies" option is selected
       attr_accessor :release_varies
       # Selected release embargo timeframe (if any) under release "Varies" option
@@ -266,6 +259,8 @@ module Hyrax
       # rubocop:disable Metrics/CyclomaticComplexity
       # rubocop:disable Metrics/PerceivedComplexity
       def permission_template_update_params
+        return attributes unless attributes.key?(:release_varies) || attributes.key?(:release_embargo)
+
         filtered_attributes = attributes.except(:release_varies, :release_embargo)
         # If 'varies' before date option selected, then set release_period='before' and save release_date as-is
         if attributes[:release_varies] == Hyrax::PermissionTemplate::RELEASE_TEXT_VALUE_BEFORE_DATE

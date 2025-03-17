@@ -10,26 +10,22 @@ RSpec.describe Hyrax::Ability, :clean_repo do
   let(:collection_type) { FactoryBot.create(:collection_type) }
   let(:collection_type_gid) { collection_type.to_global_id }
 
-  # rubocop:disable RSpec/InstanceVariable
-  before :all do
-    @current_collection_model = Hyrax.config.collection_model
+  # abilities always test Hyrax::PcdmCollection, but only test Collection
+  # if it is configured as the collection_model
+  around(:each) do |example|
+    current_collection_model = Hyrax.config.collection_model
+    Hyrax.config.collection_model = 'Collection' unless Hyrax.config.disable_wings
 
-    # abilities always test Hyrax::PcdmCollection, but only test Collection
-    # if it is configured as the collection_model
-    Hyrax.config.collection_model = 'Collection'
+    example.run
+    Hyrax.config.collection_model = current_collection_model
   end
-
-  after :all do
-    Hyrax.config.collection_model = @current_collection_model
-  end
-  # rubocop:enable RSpec/InstanceVariable
 
   # rubocop:disable RSpec/ExampleLength
   context 'when admin user' do
     let(:current_user) { admin }
     let(:admin) { FactoryBot.create(:admin, email: 'admin@example.com') }
 
-    context 'and collection is an ActiveFedora::Base' do
+    context 'and collection is an ActiveFedora::Base', :active_fedora do
       let!(:collection) do
         FactoryBot.build(:collection_lw, id: 'col_au',
                                          user: user,
@@ -91,7 +87,7 @@ RSpec.describe Hyrax::Ability, :clean_repo do
     let(:current_user) { manager }
     let(:manager) { FactoryBot.create(:user, email: 'manager@example.com') }
 
-    context 'and collection is an ActiveFedora::Base' do
+    context 'and collection is an ActiveFedora::Base', :active_fedora do
       let!(:collection) do
         FactoryBot.build(:collection_lw, id: 'col_mu',
                                          user: user,
@@ -106,7 +102,7 @@ RSpec.describe Hyrax::Ability, :clean_repo do
                           permission_template: collection.permission_template,
                           agent_type: 'user',
                           agent_id: manager.user_key)
-        collection.reset_access_controls!
+        collection.permission_template.reset_access_controls_for(collection: collection)
       end
 
       it 'can do everything for the collection they manage' do
@@ -177,7 +173,7 @@ RSpec.describe Hyrax::Ability, :clean_repo do
     let(:current_user) { depositor }
     let(:depositor) { FactoryBot.create(:user, email: 'depositor@example.com') }
 
-    context 'and collection is an ActiveFedora::Base' do
+    context 'and collection is an ActiveFedora::Base', :active_fedora do
       let!(:collection) do
         FactoryBot.build(:collection_lw, id: 'col_du',
                                          user: user,
@@ -192,7 +188,9 @@ RSpec.describe Hyrax::Ability, :clean_repo do
                           permission_template: collection.permission_template,
                           agent_type: 'user',
                           agent_id: depositor.user_key)
-        collection.reset_access_controls!
+        collection.permission_template.reset_access_controls_for(
+          collection: collection, interpret_visibility: true
+        )
       end
 
       it 'can view and deposit in the collection where they are a depositor' do
@@ -263,7 +261,7 @@ RSpec.describe Hyrax::Ability, :clean_repo do
     let(:current_user) { viewer }
     let(:viewer) { FactoryBot.create(:user, email: 'viewer@example.com') }
 
-    context 'and collection is an ActiveFedora::Base' do
+    context 'and collection is an ActiveFedora::Base', :active_fedora do
       let!(:collection) do
         FactoryBot.build(:collection_lw, id: 'col_vu',
                                          user: user,
@@ -278,7 +276,7 @@ RSpec.describe Hyrax::Ability, :clean_repo do
                           permission_template: collection.permission_template,
                           agent_type: 'user',
                           agent_id: viewer.user_key)
-        collection.reset_access_controls!
+        collection.permission_template.reset_access_controls_for(collection: collection)
       end
 
       it 'can view the collection where they are a viewer' do
@@ -349,7 +347,7 @@ RSpec.describe Hyrax::Ability, :clean_repo do
     let(:current_user) { other_user }
     let(:other_user) { FactoryBot.create(:user, email: 'other_user@example.com') }
 
-    context 'and collection is an ActiveFedora::Base' do
+    context 'and collection is an ActiveFedora::Base', :active_fedora do
       let!(:collection) do
         FactoryBot.create(:collection_lw, id: 'as',
                                           user: user,

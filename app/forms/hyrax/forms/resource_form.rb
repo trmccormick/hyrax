@@ -5,46 +5,8 @@ module Hyrax
     ##
     # @api public
     #
-    # @example defining a form class using HydraEditor-like configuration
-    #   class MonographForm < Hyrax::Forms::ResourceForm(Monograph)
-    #     self.required_fields = [:title, :creator, :rights_statement]
-    #     # other WorkForm-like configuration here
-    #   end
-    #
-    def self.ResourceForm(work_class)
-      Class.new(Hyrax::Forms::ResourceForm) do
-        self.model_class = work_class
-
-        include Hyrax::FormFields(:core_metadata)
-
-        ##
-        # @return [String]
-        def self.inspect
-          return "Hyrax::Forms::ResourceForm(#{model_class})" if name.blank?
-          super
-        end
-      end
-    end
-
-    ##
-    # @api public
-    #
-    # This form wraps `Hyrax::ChangeSet` in the `HydraEditor::Form` interface.
+    # This form wraps +Hyrax::ChangeSet+ in the +HydraEditor::Form+ interface.
     class ResourceForm < Hyrax::ChangeSet # rubocop:disable Metrics/ClassLength
-      ##
-      # @api private
-      InWorksPrepopulator = lambda do |_options|
-        self.in_works_ids =
-          if persisted?
-            Hyrax.query_service
-                 .find_inverse_references_by(resource: model, property: :member_ids)
-                 .select(&:work?)
-                 .map(&:id)
-          else
-            []
-          end
-      end
-
       ##
       # @api private
       #
@@ -52,7 +14,7 @@ module Hyrax
       #   with `etag`-driven, application-side lock checks. for non-wings adapters
       #   we want to move away from application side lock validation and rely
       #   on the adapter/database features instead.
-      LockKeyPrepopulator = lambda do |_options|
+      LockKeyPrepopulator = proc do |_options|
         if Hyrax.config.disable_wings || !Hyrax.metadata_adapter.is_a?(Wings::Valkyrie::MetadataAdapter)
           Hyrax.logger.info "trying to prepopulate a lock token for " \
                             "#{self.class.inspect}, but optimistic locking isn't " \
@@ -67,44 +29,8 @@ module Hyrax
       class_attribute :model_class
 
       property :human_readable_type, writable: false
-
-      property :depositor
-      property :on_behalf_of
-      property :proxy_depositor
-
-      property :visibility, default: VisibilityIntention::PRIVATE
-
       property :date_modified, readable: false
       property :date_uploaded, readable: false
-      property :agreement_accepted, virtual: true, default: false, prepopulator: ->(_opts) { self.agreement_accepted = !model.new_record }
-
-      collection(:permissions,
-                 virtual: true,
-                 default: [],
-                 form: Hyrax::Forms::Permission,
-                 populator: :permission_populator,
-                 prepopulator: ->(_opts) { self.permissions = Hyrax::AccessControl.for(resource: model).permissions })
-
-      # virtual properties for embargo/lease;
-      property :embargo_release_date, virtual: true, prepopulator: ->(_opts) { self.embargo_release_date = model.embargo&.embargo_release_date }
-      property :visibility_after_embargo, virtual: true, prepopulator: ->(_opts) { self.visibility_after_embargo = model.embargo&.visibility_after_embargo }
-      property :visibility_during_embargo, virtual: true, prepopulator: ->(_opts) { self.visibility_during_embargo = model.embargo&.visibility_during_embargo }
-
-      property :lease_expiration_date, virtual: true,  prepopulator: ->(_opts) { self.lease_expiration_date = model.lease&.lease_expiration_date }
-      property :visibility_after_lease, virtual: true, prepopulator: ->(_opts) { self.visibility_after_lease = model.lease&.visibility_after_lease }
-      property :visibility_during_lease, virtual: true, prepopulator: ->(_opts) { self.visibility_during_lease = model.lease&.visibility_during_lease }
-
-      # pcdm relationships
-      property :admin_set_id, prepopulator: ->(_opts) { self.admin_set_id = Hyrax::AdminSetCreateService.find_or_create_default_admin_set.id.to_s }
-      property :in_works_ids, virtual: true, prepopulator: InWorksPrepopulator
-      property :member_ids, default: [], type: Valkyrie::Types::Array
-      property :member_of_collection_ids, default: [], type: Valkyrie::Types::Array
-      property :member_of_collections_attributes, virtual: true, populator: :in_collections_populator
-      validates_with CollectionMembershipValidator
-
-      property :representative_id, type: Valkyrie::Types::String
-      property :thumbnail_id, type: Valkyrie::Types::String
-      property :rendering_ids, default: [], type: Valkyrie::Types::Array
 
       # provide a lock token for optimistic locking; we name this `version` for
       # backwards compatibility
@@ -116,9 +42,23 @@ module Hyrax
       # @see https://github.com/samvera/valkyrie/wiki/Optimistic-Locking
       property :version, virtual: true, prepopulator: LockKeyPrepopulator
 
-      # backs the child work search element;
-      # @todo: look for a way for the view template not to depend on this
-      property :find_child_work, default: nil, virtual: true
+      ##
+      # @api public
+      #
+      # Forms should be initialized with an explicit +resource:+ parameter to
+      # match indexers.
+      def initialize(deprecated_resource = nil, resource: nil)
+        if resource.nil?
+          if !deprecated_resource.nil?
+            Deprecation.warn "Initializing Valkyrie forms without an explicit resource parameter is deprecated. Pass the resource with `resource:` instead."
+            super(deprecated_resource)
+          else
+            super()
+          end
+        else
+          super(resource)
+        end
+      end
 
       class << self
         ##
@@ -128,19 +68,19 @@ module Hyrax
         #
         # @example
         #   monograph  = Monograph.new
-        #   change_set = Hyrax::Forms::ResourceForm.for(monograph)
-        def for(resource)
-          "#{resource.class.name}Form".constantize.new(resource)
-        rescue NameError => _err
-          case resource
-          when Hyrax::AdministrativeSet
-            Hyrax::Forms::AdministrativeSetForm.new(resource)
-          when Hyrax::FileSet
-            Hyrax::Forms::FileSetForm.new(resource)
-          when Hyrax::PcdmCollection
-            Hyrax::Forms::PcdmCollectionForm.new(resource)
-          else
-            Hyrax::Forms::ResourceForm(resource.class).new(resource)
+        #   change_set = Hyrax::Forms::ResourceForm.for(resource: monograph)
+        def for(deprecated_resource = nil, resource: nil)
+          if resource.nil? && !deprecated_resource.nil?
+            Deprecation.warn "Initializing Valkyrie forms without an explicit resource parameter is deprecated. Pass the resource with `resource:` instead."
+            return self.for(resource: deprecated_resource)
+          end
+          klass = "#{resource.class.name}Form".safe_constantize
+          klass ||= Hyrax::Forms::ResourceForm(resource.class)
+          begin
+            klass.new(resource: resource)
+          rescue ArgumentError
+            Deprecation.warn "Initializing Valkyrie forms without an explicit resource parameter is deprecated. #{klass} should be updated accordingly."
+            klass.new(resource)
           end
         end
 
@@ -207,25 +147,6 @@ module Hyrax
       end
 
       private
-
-      def in_collections_populator(fragment:, **_options)
-        adds = []
-        deletes = []
-        fragment.each do |_, h|
-          if h["_destroy"] == "true"
-            deletes << Valkyrie::ID.new(h["id"])
-          else
-            adds << Valkyrie::ID.new(h["id"])
-          end
-        end
-
-        self.member_of_collection_ids = ((member_of_collection_ids + adds) - deletes).uniq
-      end
-
-      # https://trailblazer.to/2.1/docs/reform.html#reform-populators-populator-collections
-      def permission_populator(collection:, index:, **)
-        Hyrax::Forms::Permission.new(collection[index])
-      end
 
       def _form_field_definitions
         self.class.definitions

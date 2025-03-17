@@ -3,28 +3,36 @@ module Hyrax
   module Transactions
     module Steps
       ##
-      # A `dry-transcation` step that applies a permission template for a given
-      # work's AdminSet.
+      # A `dry-transcation` step that applies a permission template
+      # to a saved object.
       #
-      # @since 2.4.0
-      # @deprecated This is part of the legacy AF set of transaction steps for works.
-      #   Transactions are not being used with AF works.  This will be removed in 4.0.
+      # @note by design, this step should succeed even if for some reason a
+      #   permission template could not be applied. it's better to complete the
+      #   rest of the creation process with missing ACL grants than to crash and
+      #   miss other crucial steps.
+      #
+      # @since 4.1.0
       class ApplyPermissionTemplate
-        include Dry::Transaction::Operation
+        include Dry::Monads[:result]
 
         ##
-        # @param [Hyrax::WorkBehavior] work
+        # @param [Hyrax::Work] object
         #
         # @return [Dry::Monads::Result]
-        def call(work)
-          return Failure(:missing_permission) unless
-            (template = work&.admin_set&.permission_template)
+        def call(object)
+          template = Hyrax::PermissionTemplate.find_by(source_id: object&.admin_set_id)
 
-          Hyrax::PermissionTemplateApplicator.apply(template).to(model: work)
+          if template.blank?
+            Hyrax.logger.info("At create time, #{object} doesn't have a " \
+                              "PermissionTemplate, which it should have via " \
+                              "AdministrativeSet #{object&.admin_set_id}). " \
+                              "Continuing to create this object anyway.")
 
-          Success(work)
-        rescue ActiveRecord::RecordNotFound => err
-          Failure(err)
+            return Success(object)
+          end
+
+          Hyrax::PermissionTemplateApplicator.apply(template).to(model: object) &&
+            Success(object)
         end
       end
     end

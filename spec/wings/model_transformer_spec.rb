@@ -1,8 +1,11 @@
 # frozen_string_literal: true
+
+return if Hyrax.config.disable_wings
+
 require 'wings_helper'
 require 'wings/model_transformer'
 
-RSpec.describe Wings::ModelTransformer, :clean_repo do
+RSpec.describe Wings::ModelTransformer, :active_fedora, :clean_repo do
   subject(:factory) { described_class.new(pcdm_object: pcdm_object) }
   let(:pcdm_object) { work }
   let(:adapter)     { Valkyrie::MetadataAdapter.find(:memory) }
@@ -71,16 +74,36 @@ RSpec.describe Wings::ModelTransformer, :clean_repo do
 
     it 'round trips attributes' do # rubocop:disable RSpec/ExampleLength
       persister.save(resource: factory.build)
+      resource = adapter.query_service.find_by_alternate_identifier(alternate_identifier: work.id)
 
-      expect(adapter.query_service.find_by_alternate_identifier(alternate_identifier: work.id))
-        .to have_attributes title: work.title,
-                            date_created: work.date_created,
-                            depositor: work.depositor,
-                            description: work.description,
-                            import_url: work.import_url,
-                            publisher: work.publisher,
-                            related_url: work.related_url,
-                            source: work.source
+      # Why these antics?  Because there are minor differences that become errors in the
+      # have_attributes matcher.  Those differences as printed by Rspec's expectation matcher are as
+      # follows:
+      #
+      #   -:date_created => [Thu, 25 Jan 2024 15:44:23 +0000],
+      #   +:date_created => [Thu, 25 Jan 2024 15:44:23.381956010 +0000],
+      #    :depositor => "user1",
+      #    :description => ["a description"],
+      #   -:import_url => #<ActiveTriples::Resource:0x5eaec ID:<http://example.com/fake1>>,
+      #   -:publisher => [false],
+      #   -:related_url => [#<ActiveTriples::Resource:0x5eb00 ID:<http://example.com/fake1>>, #<ActiveTriples::Resource:0x5eb14 ID:<http://example.com/fake2>>],
+      #   +:import_url => #<RDF::URI:0x5eab0 URI:http://example.com/fake1>,
+      #   +:publisher => [],
+      #   +:related_url => [#<RDF::URI:0x5eac4 URI:http://example.com/fake1>, #<RDF::URI:0x5ead8 URI:http://example.com/fake2>],
+      #    :source => [1.125, :moomin],
+      #    :title => ["fake title"],
+      #
+      # The date created is for purposes of a date, equal.  The ActiveTriple ID and URI are the
+      # same, and as the spec below illustrates, they are equal (according to their equality
+      # matchers).
+      errors = []
+      [:title, :date_created, :depositor, :description, :import_url, :related_url, :source].each do |attr|
+        next if work.public_send(attr) == resource.public_send(attr)
+        errors << { attr => [work.public_send(attr), resource.public_send(attr)] }
+      end
+      errors << { publisher: [work.publisher, resource.publisher] } unless work.publisher.select(&:present?) == resource.publisher.select(&:present?)
+
+      expect(errors).to be_empty
     end
 
     context 'when handling an auto-generated object' do
@@ -174,7 +197,7 @@ RSpec.describe Wings::ModelTransformer, :clean_repo do
     end
 
     context 'with files and derivatives in fileset' do
-      let(:file_set)            { Hydra::Works::FileSet.new }
+      let(:file_set)            { FileSet.new }
       let(:original_file)       { File.open(File.join(fixture_path, 'world.png')) }
       let(:thumbnail_file)      { File.open(File.join(fixture_path, 'image.jpg')) }
       let(:extracted_text_file) { File.open(File.join(fixture_path, 'updated-file.txt')) }
@@ -217,6 +240,13 @@ RSpec.describe Wings::ModelTransformer, :clean_repo do
         before do
           work.members << child_work1
           work.members << child_work2
+        end
+
+        it 'includes ordered_members too' do
+          ordered_members = [FactoryBot.create(:work), FactoryBot.create(:work)]
+          ordered_members.each { |w| work.ordered_members << w }
+
+          expect(factory.build.member_ids).to include(*['cw1', 'cw2'] + ordered_members.map(&:id))
         end
 
         it 'sets member_ids to the ids of the unordered members' do
@@ -286,7 +316,7 @@ RSpec.describe Wings::ModelTransformer, :clean_repo do
 
     let(:page_class) do
       ActiveFedoraPage = Class.new(ActiveFedora::Base) do
-        belongs_to :active_fedora_book_with_active_fedora_pages, predicate: ActiveFedora::RDF::Fcrepo::RelsExt.isPartOf
+        belongs_to :active_fedora_monograph, predicate: ActiveFedora::RDF::Fcrepo::RelsExt.isPartOf
       end
     end
 
@@ -324,22 +354,29 @@ RSpec.describe Wings::ModelTransformer, :clean_repo do
           .to have_attributes title: book.title,
                               contributor: book.contributor,
                               description: book.description
-        expect(subject.build.active_fedora_page_ids).to eq(['pg1', 'pg2'])
+      end
+
+      it "skips has_many reflections" do
+        expect(factory.build).not_to respond_to :active_fedora_page_ids
+      end
+
+      it "populates belongs_to reflections" do
+        monograph = book_class.create(**attributes)
+
+        expect(described_class.new(pcdm_object: page1).build)
+          .to have_attributes active_fedora_monograph_id: monograph.id
+        expect(described_class.new(pcdm_object: page2).build)
+          .to have_attributes active_fedora_monograph_id: monograph.id
       end
     end
   end
 
   context 'build for file' do
-    let(:id)       { '123' }
-    let(:file_set) { FactoryBot.create(:file_set, id: id) }
-    let(:file) { file_set.build_original_file }
+    let(:file_set) { FactoryBot.create(:file_set, :image) }
+    let(:file) { file_set.original_file }
     let(:pcdm_object) { file_set }
 
     context 'with content' do
-      before do
-        file.content = 'foo'
-      end
-
       it 'sets file id in file set resource' do
         expect(subject.build.original_file_id).to eq file.id
       end
@@ -359,8 +396,22 @@ RSpec.describe Wings::ModelTransformer, :clean_repo do
       let(:file_set) { create(:file_set) }
 
       it 'does not set file id in file set resource' do
-        expect(factory.build.original_file_id).to be_empty
+        expect(factory.build.original_file_id).to be_nil
       end
+    end
+  end
+
+  context 'with an admin set' do
+    let(:pcdm_object) { AdminSet.create(title: ['my admin set']) }
+
+    before do
+      5.times do |i|
+        GenericWork.create(title: [i.to_s], admin_set_id: pcdm_object.id)
+      end
+    end
+
+    it 'does not have member_ids' do
+      expect(factory.build).not_to respond_to :member_ids
     end
   end
 

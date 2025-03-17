@@ -1,5 +1,7 @@
 # frozen_string_literal: true
-RSpec.describe AttachFilesToWorkWithOrderedMembersJob, perform_enqueued: [AttachFilesToWorkWithOrderedMembersJob] do
+
+# NOTE: This job initiates the Actor Stack with ActiveFedora objects.
+RSpec.describe AttachFilesToWorkWithOrderedMembersJob, :active_fedora, perform_enqueued: [AttachFilesToWorkWithOrderedMembersJob] do
   let(:file1) { File.open(fixture_path + '/world.png') }
   let(:file2) { File.open(fixture_path + '/image.jp2') }
   let(:uploaded_file1) { build(:uploaded_file, file: file1) }
@@ -23,7 +25,7 @@ RSpec.describe AttachFilesToWorkWithOrderedMembersJob, perform_enqueued: [Attach
 
     it "overrides the work's visibility", perform_enqueued: [described_class, IngestJob] do
       expect(CharacterizeJob).to receive(:perform_later).twice
-      described_class.perform_now(generic_work, [uploaded_file1, uploaded_file2], attributes)
+      described_class.perform_now(generic_work, [uploaded_file1, uploaded_file2], **attributes)
       generic_work.reload
       expect(generic_work.file_sets.count).to eq 2
       expect(generic_work.file_sets.find { |fs| fs.label == uploaded_file1.file.filename }.visibility).to eq 'open'

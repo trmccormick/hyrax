@@ -10,7 +10,6 @@ module Hyrax
     include Hyrax::HumanReadableType
     include Hyrax::HasRepresentative
     include Hyrax::Permissions
-    include Hyrax::CollectionNesting
 
     included do
       validates_with HasOneTitleValidator
@@ -18,7 +17,15 @@ module Hyrax
 
       self.indexer = Hyrax::CollectionIndexer
 
-      class_attribute :index_collection_type_gid_as, writer: false
+      ##
+      # @!group Class Attributes
+      #
+      # @!attribute internal_resource
+      #   @return [String]
+      class_attribute :internal_resource, default: "Collection"
+
+      class_attribute :index_collection_type_gid_as, instance_writer: false
+      ##
       self.index_collection_type_gid_as = [:symbol]
 
       property :collection_type_gid, predicate: ::RDF::Vocab::SCHEMA.additionalType, multiple: false do |index|
@@ -29,9 +36,11 @@ module Hyrax
       validates :collection_type_gid, presence: true
 
       # Need to define here in order to override setter defined by ActiveTriples
-      def collection_type_gid=(new_collection_type_gid, force: false)
+      def collection_type_gid=(new_collection_type_gid)
         new_collection_type_gid = new_collection_type_gid&.to_s
-        raise "Can't modify collection type of this collection" if !force && persisted? && !collection_type_gid_was.nil? && collection_type_gid_was != new_collection_type_gid
+        raise "Can't modify collection type of this collection" if
+          !Thread.current[:force_collection_type_gid] && # Used by update_collection_type_global_ids rake task
+          persisted? && !collection_type_gid_was.nil? && collection_type_gid_was != new_collection_type_gid
         new_collection_type = Hyrax::CollectionType.find_by_gid!(new_collection_type_gid)
         super(new_collection_type_gid)
         @collection_type = new_collection_type
@@ -39,34 +48,8 @@ module Hyrax
       end
     end
 
-    delegate(*Hyrax::CollectionType.settings_attributes, to: :collection_type)
-
-    # Get the collection_type when accessed
-    def collection_type
-      @collection_type ||= Hyrax::CollectionType.find_by_gid!(collection_type_gid)
-    end
-
     def collection_type=(new_collection_type)
       self.collection_type_gid = new_collection_type.to_global_id
-    end
-
-    # Add members using the members association.
-    def add_members(new_member_ids)
-      Deprecation.warn("'##{__method__}' will be removed in Hyrax 4.0.  " \
-                         "Instead, use Hyrax::Collections::CollectionMemberService.add_members_by_ids.")
-      Hyrax::Collections::CollectionMemberService.add_members_by_ids(collection_id: id,
-                                                                     new_member_ids: new_member_ids,
-                                                                     user: nil)
-    end
-
-    # Add member objects by adding this collection to the objects' member_of_collection association.
-    # @param [Enumerable<String>] the ids of the new child collections and works collection ids
-    def add_member_objects(new_member_ids)
-      Deprecation.warn("'##{__method__}' will be removed in Hyrax 4.0.  " \
-                         "Instead, use Hyrax::Collections::CollectionMemberService.add_members_by_ids.")
-      Hyrax::Collections::CollectionMemberService.add_members_by_ids(collection_id: id,
-                                                                     new_member_ids: new_member_ids,
-                                                                     user: nil)
     end
 
     # @return [Enumerable<ActiveFedora::Base>] an enumerable over the children of this collection
@@ -94,22 +77,6 @@ module Hyrax
           "hyrax/#{collection}/#{element}"
         end
       end
-
-      def collection_type_gid_document_field_name
-        Deprecation.warn('use Hyrax.config.collection_type_index_field instead')
-        Hyrax.config.collection_type_index_field
-      end
-    end
-
-    # @deprecated to be removed in 4.0.0; this feature was replaced with a
-    #   hard-coded null implementation
-    # @return [Fixnum] 0
-    def bytes
-      Deprecation.warn('#bytes has been deprecated for removal in Hyrax 4.0.0; ' \
-                       'The implementation of the indexed Collection size ' \
-                       'feature is extremely inefficient, so it has been removed. ' \
-                       'This method now returns a hard-coded `0` for compatibility.')
-      0
     end
 
     # @api public
@@ -118,18 +85,6 @@ module Hyrax
     # @raise [ActiveRecord::RecordNotFound]
     def permission_template
       Hyrax::PermissionTemplate.find_by!(source_id: id)
-    end
-
-    ##
-    # @deprecated use PermissionTemplate#reset_access_controls_for instead
-    #
-    # Calculate and update who should have read/edit access to the collections based on who
-    # has access in PermissionTemplateAccess
-    def reset_access_controls!
-      Deprecation.warn("reset_access_controls! is deprecated; use PermissionTemplate#reset_access_controls_for instead.")
-
-      permission_template
-        .reset_access_controls_for(collection: self, interpret_visibility: true)
     end
 
     private

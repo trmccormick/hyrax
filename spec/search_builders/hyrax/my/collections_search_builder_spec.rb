@@ -3,31 +3,21 @@ RSpec.describe Hyrax::My::CollectionsSearchBuilder do
   let(:context) do
     double(blacklight_config: CatalogController.blacklight_config,
            current_ability: ability,
-           current_user: user)
+           current_user: user,
+           search_state_class: nil)
   end
   let(:ability) do
     ::Ability.new(user)
   end
   let(:user) { create(:user) }
   let(:builder) { described_class.new(context) }
+  let(:admin_klass) { Hyrax.config.disable_wings ? Hyrax::AdministrativeSet : AdminSet }
 
   describe '#models' do
     subject { builder.models }
 
     it do
-      is_expected.to contain_exactly(AdminSet,
-                                     Hyrax::AdministrativeSet,
-                                     Hyrax.config.collection_class)
-    end
-
-    context 'when collection class is something other than ::Collection' do
-      before { allow(Hyrax.config).to receive(:collection_model).and_return('Hyrax::PcdmCollection') }
-      it do
-        is_expected.to contain_exactly(AdminSet,
-                                       Hyrax::AdministrativeSet,
-                                       ::Collection,
-                                       Hyrax::PcdmCollection)
-      end
+      is_expected.to match_array(Hyrax::ModelRegistry.admin_set_classes + Hyrax::ModelRegistry.collection_classes)
     end
   end
 
@@ -45,7 +35,7 @@ RSpec.describe Hyrax::My::CollectionsSearchBuilder do
     it "has filter that excludes depositor" do
       subject
       expect(solr_params[:fq]).to eq ["(_query_:\"{!terms f=depositor_ssim}#{user.user_key}\" " \
-                                      "OR (_query_:\"{!terms f=has_model_ssim}AdminSet\" " \
+                                      "OR (_query_:\"{!terms f=has_model_ssim}#{Hyrax::ModelRegistry.admin_set_rdf_representations.join(',')}\" " \
                                       "AND _query_:\"{!terms f=creator_ssim}#{user.user_key}\"))"]
     end
   end

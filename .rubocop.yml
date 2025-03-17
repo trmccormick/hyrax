@@ -1,3 +1,5 @@
+require: ./lib/hyrax/rubocop/custom_cops.rb
+
 inherit_from:
   - .rubocop_fixme.yml
 
@@ -5,7 +7,7 @@ inherit_gem:
   bixby: bixby_default.yml
 
 AllCops:
-  TargetRubyVersion: 2.5
+  TargetRubyVersion: 2.6
   DisplayCopNames: true
   Exclude:
     - 'db/**/*'
@@ -125,3 +127,6 @@ RSpec/NestedGroups:
 
 RSpec/LeadingSubject:
   Enabled: false
+
+Hyrax/ArResource:
+  Enabled: true

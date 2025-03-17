@@ -3,7 +3,8 @@ RSpec.describe Hyrax::Dashboard::WorksSearchBuilder do
   let(:context) do
     double(blacklight_config: CatalogController.blacklight_config,
            current_ability: ability,
-           current_user: user)
+           current_user: user,
+           search_state_class: nil)
   end
   let(:ability) do
     ::Ability.new(user)
@@ -24,21 +25,22 @@ RSpec.describe Hyrax::Dashboard::WorksSearchBuilder do
   end
 
   describe "#show_only_managed_works_for_non_admins" do
-    subject { builder.show_only_managed_works_for_non_admins(solr_params) }
-
     let(:solr_params) { Blacklight::Solr::Request.new }
 
+    before do
+      builder.show_only_managed_works_for_non_admins(solr_params)
+    end
+
     it "has filter that excludes depositor" do
-      subject
       expect(solr_params[:fq]).to eq ["-_query_:\"{!raw f=depositor_ssim}#{user.user_key}\""]
     end
 
     context "as admin" do
+      # Overrides the user sent to builder via context, above.
       let(:user) { create(:user, groups: 'admin') }
 
       it "does nothing" do
-        subject
-        expect(solr_params[:fq]).to eq []
+        expect(solr_params[:fq].to_a).to eq []
       end
     end
   end

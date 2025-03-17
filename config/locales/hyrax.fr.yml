@@ -440,7 +440,7 @@ fr:
           end_label: Terminer [par défaut pour le moment]
           headers:
             main: Statistiques de travail
-            total: 'Total des travaux :'
+            total: 'Total des travaux :'
             visibility: Totaux par visibilité
           heading: Afficher les fichiers déposés par les utilisateurs
           start_label: Départ
@@ -549,7 +549,10 @@ fr:
           répondre à votre demande. Si vous rencontrez des erreurs de
           téléchargement depuis le nuage, faites-nous savoir via le
           %{contact_href}.</p>
-        local_upload_html: "<p>Vous pouvez ajouter un ou plusieurs fichiers à associer à ce travail.</p>"
+          <p>Les téléchargements sont limités à %{upload_file_limit} fichiers de %{upload_size_limit} Mo chacun.</p>
+        local_upload_html: |
+          <p>Vous pouvez ajouter un ou plusieurs fichiers à associer à ce travail.</p>
+          <p>Les téléchargements sont limités à %{upload_file_limit} fichiers de %{upload_size_limit} Mo chacun.</p>
       form_member_of_collections:
         actions:
           remove: Supprimer de la collection
@@ -563,7 +566,7 @@ fr:
           actions: action
           title: Titre de la collection
       form_permission:
-        visibility: Visibilité <small> Qui devrait être en mesure d’afficher ou de télécharger ce contenu? </ Small>
+        visibility: Visibilité <small> Qui devrait être en mesure d’afficher ou de télécharger ce contenu? </small>
       form_permission_under_embargo:
         help_html: "<strong>Ce travail est sous embargo.</strong> Vous pouvez modifier les paramètres de l'embargo ici, ou vous pouvez visiter le %{edit_link} pour le désactiver."
         legend_html: Visibilité <small>Qui devrait pouvoir afficher ou télécharger ce contenu?</small>
@@ -595,13 +598,14 @@ fr:
         depositor: Déposant
         directions: Indépendamment des paramètres de visibilité pour ce travail, vous pouvez également le partager avec d'autres utilisateurs et groupes.
         group: Groupe
-        permissions_save_note_html: Les autorisations ne sont <strong> pas </ strong> enregistrées tant que le & quot; Enregistrer & quot; bouton est enfoncé en bas de la page.
+        permissions_save_note_html: Les autorisations ne sont <strong> pas </strong> enregistrées tant que le & quot; Enregistrer & quot; bouton est enfoncé en bas de la page.
         use_add_button: Utilisez le bouton Ajouter pour donner accès à un %{account_label} à la fois (il sera ajouté à la liste ci-dessous). Sélectionnez l'utilisateur, par son nom ou par %{account_label} \. Ensuite, sélectionnez le niveau d'accès que vous souhaitez accorder et cliquez sur Ajouter ce %{account_label} pour terminer l'ajout de l'autorisation.
       form_thumbnail:
         help_html: Sélectionnez le fichier à utiliser comme vignette pour ce travail.
         legend_html: La vignette
       form_visibility_component:
         visibility: Visibilité
+        subtitle_html: <small>Qui devrait être en mesure d’afficher ou de télécharger ce contenu?</small>
       inspect_work:
         back_to: Retour à
         entity_id: ID d'entité
@@ -902,6 +906,11 @@ fr:
             collection_title: Titre de la collection
           this_collection_in_other_collections_description: Vous pouvez ajouter cette collection à d'autres collections en tant que sous-collection.
         form_share:
+          access_options:
+            creator: Créateur
+            depositor: Déposant
+            manager: Gestionnaire
+            viewer: Téléspectateur
           add_group: Ajouter un groupe
           add_sharing: Ajouter un partage
           add_user: Ajouter un utilisateur
@@ -1092,14 +1101,14 @@ fr:
       no_transfers: Vous n'avez transféré aucun travail
       profiles:
         edit_primary:
-          change_picture: <i class = "glyphicon glyphicon-camera"> </ i> Changer photo
+          change_picture: <i class = "fa fa-camera"> </ i> Changer photo
           delete_picture: Supprimer la photo
           delete_picture_data_content: Si vous souhaitez supprimer entièrement votre image, cochez la case et enregistrez votre profil.
           delete_picture_data_original_title: Supprimer l'image
           facebook_handle: <i class = "fa fa-facebook" aria-hidden = "true"> </ i> Poignée Facebook
           google_handle: <i class = "fa fa-google-plus"> </ i> Poignée Google+
           help_change_picture_type: JPG, GIF ou PNG (moins de 2 Mo)
-          save_profile: <i class = "glyphicon glyphicon-save"> </ i> Enregistrer le profil
+          save_profile: <i class = "fa fa-floppy-o"> </ i> Enregistrer le profil
           twitter_handle: <i class = "fa fa-twitter" aria-hidden = "true"> </ i> Poignée Twitter
       proxy_activity: Activité de procuration
       proxy_add_deny: Vous ne pouvez pas vous faire un proxy
@@ -1410,14 +1419,14 @@ fr:
       count:
         collections:
           collections_listing: Liste des collections
-          in_repo: "<strong> Collections %{total_count} </ strong> dans le référentiel"
-          you_manage: "<strong> collections %{total_count} </ strong> que vous pouvez gérer dans le référentiel"
-          you_own: "<strong> collections %{total_count} </ strong> que vous possédez dans le référentiel"
+          in_repo: "<strong> Collections %{total_count} </strong> dans le référentiel"
+          you_manage: "<strong> collections %{total_count} </strong> que vous pouvez gérer dans le référentiel"
+          you_own: "<strong> collections %{total_count} </strong> que vous possédez dans le référentiel"
         works:
-          in_repo: "<strong> %{total_count} fonctionne </ strong> dans le référentiel"
+          in_repo: "<strong> %{total_count} fonctionne </strong> dans le référentiel"
           works_listing: Liste des travaux
-          you_manage: "<strong> %{total_count} fonctionne </ strong> vous pouvez gérer dans le référentiel"
-          you_own: "<strong> %{total_count} fonctionne </ strong> que vous possédez dans le référentiel"
+          you_manage: "<strong> %{total_count} fonctionne </strong> vous pouvez gérer dans le référentiel"
+          you_own: "<strong> %{total_count} fonctionne </strong> que vous possédez dans le référentiel"
       sort_and_per_page:
         number_of_results_to_display_per_page: Nombre de résultats à afficher par page
     nav_safety:
@@ -1455,7 +1464,7 @@ fr:
         changes_required:
           message: |-
             %{title} (%{link}) nécessite des modifications supplémentaires avant d'être approuvé.
-             '%{comment}'
+             '%{comment}'
           subject: Votre dépôt nécessite des modifications
         deposited:
           message: "%{title} (%{link}) a été approuvé par %{user}. %{comment}"
@@ -1489,7 +1498,7 @@ fr:
       read: Voir le téléchargement
     search:
       button:
-        html: <span class="glyphicon glyphicon-search"></span> Aller
+        html: <span class="fa fa-search"></span> Aller
         text: Chercher
       form:
         option:
@@ -1835,7 +1844,7 @@ fr:
         find_child_work: Rechercher un travail ...
         member_of_collection_ids: Sélectionnez une collection ...
     required:
-      html: <span class="label label-info required-tag">Champs obligatoires</span>
+      html: <span class="badge badge-info required-tag">Champs obligatoires</span>
   total_view:
     one: Ce travail a 1 vue totale
     other: Ce travail a zxzxxx0 vues au total

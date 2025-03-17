@@ -26,9 +26,6 @@ module Hyrax
       # Catch permission errors
       rescue_from Hydra::AccessDenied, CanCan::AccessDenied, with: :deny_collection_access
 
-      # actions: index, create, new, edit, show, update, destroy, permissions, citation
-      before_action :authenticate_user!, except: [:index]
-
       class_attribute :presenter_class,
                       :form_class,
                       :single_item_search_builder_class,
@@ -80,7 +77,6 @@ module Hyrax
 
       def edit
         form
-        collection_type
       end
 
       def after_create
@@ -165,7 +161,7 @@ module Hyrax
           end
         end
       rescue StandardError => err
-        Rails.logger.error(err)
+        Hyrax.logger.error(err)
         after_destroy_error(params[:id])
       end
 
@@ -190,7 +186,7 @@ module Hyrax
         @collection.collection_type_gid = params[:collection_type_gid].presence || default_collection_type.to_global_id
         @collection.attributes = collection_params.except(:members, :parent_id, :collection_type_gid)
         @collection.apply_depositor_metadata(current_user.user_key)
-        @collection.visibility = Hydra::AccessControls::AccessRight::VISIBILITY_TEXT_VALUE_PRIVATE unless @collection.discoverable?
+        @collection.visibility = Hydra::AccessControls::AccessRight::VISIBILITY_TEXT_VALUE_PRIVATE unless Hyrax::CollectionType.for(collection: @collection).discoverable?
         if @collection.save
           after_create_response
         else
@@ -218,9 +214,7 @@ module Hyrax
         process_member_changes
         process_branding
 
-        @collection.visibility = Hydra::AccessControls::AccessRight::VISIBILITY_TEXT_VALUE_PRIVATE unless @collection.discoverable?
-        # we don't have to reindex the full graph when updating collection
-        @collection.reindex_extent = Hyrax::Adapters::NestingIndexAdapter::LIMITED_REINDEX
+        @collection.visibility = Hydra::AccessControls::AccessRight::VISIBILITY_TEXT_VALUE_PRIVATE unless Hyrax::CollectionType.for(collection: @collection).discoverable?
         if @collection.update(collection_params.except(:members))
           after_update_response
         else
@@ -237,7 +231,8 @@ module Hyrax
                                                                             banner_unchanged_indicator: params["banner_unchanged"] },
                           'collection_resource.save_collection_logo' => { update_logo_file_ids: params["logo_files"],
                                                                           alttext_values: params["alttext"],
-                                                                          linkurl_values: params["linkurl"] }
+                                                                          linkurl_values: params["linkurl"],
+                                                                          logo_unchanged_indicator: false }
                         )
                  .call(form)
         @collection = result.value_or { return after_update_errors(result.failure.first) }
@@ -247,7 +242,10 @@ module Hyrax
       end
 
       def valkyrie_destroy
-        if transactions['collection_resource.destroy'].call(@collection).success?
+        if transactions['collection_resource.destroy']
+           .with_step_args('collection_resource.delete' => { user: current_user },
+                           'collection_resource.remove_from_membership' => { user: current_user })
+           .call(@collection).success?
           after_destroy(params[:id])
         else
           after_destroy_error(params[:id])
@@ -273,6 +271,7 @@ module Hyrax
       def collection_type
         @collection_type ||= CollectionType.find_by_gid!(collection.collection_type_gid)
       end
+      helper_method :collection_type
 
       def link_parent_collection(parent_id)
         child = collection.respond_to?(:valkyrie_resource) ? collection.valkyrie_resource : collection
@@ -422,7 +421,6 @@ module Hyrax
           params.permit(collection: {})[:collection]
                 .merge(params.permit(:collection_type_gid)
                              .with_defaults(collection_type_gid: default_collection_type_gid))
-                .merge(member_of_collection_ids: Array(params[:parent_id]))
         end
       end
 
@@ -485,7 +483,7 @@ module Hyrax
           params[:destination_collection_id]
         flash[:notice] = "Successfully moved #{batch.count} files to #{destination_title} Collection."
       rescue StandardError => err
-        Rails.logger.error(err)
+        Hyrax.logger.error(err)
         destination_title =
           Hyrax.query_service.find_by(id: params[:destination_collection_id]).title.first ||
           destination_id
@@ -512,11 +510,11 @@ module Hyrax
         @form ||=
           case @collection
           when Valkyrie::Resource
-            form = Hyrax::Forms::ResourceForm.for(@collection)
+            form = Hyrax::Forms::ResourceForm.for(resource: @collection)
             form.prepopulate!
             form
           else
-            form_class.new(@collection, current_ability, repository)
+            form_class.new(@collection, current_ability, blacklight_config.repository)
           end
       end
 

@@ -31,7 +31,7 @@ module Hyrax
         result = query_service.find_by(id: id)
         unless result.is_a? Hyrax::FileMetadata
           raise ::Valkyrie::Persistence::ObjectNotFoundError,
-                "Result type #{result.internal_resource} for id #{id} is not a `Hyrax::FileMetadata`"
+                "Result type #{result&.internal_resource} for id #{id} is not a `Hyrax::FileMetadata`"
         end
         result
       end
@@ -44,7 +44,7 @@ module Hyrax
         result = query_service.find_by_alternate_identifier(alternate_identifier: alternate_identifier)
         unless result.is_a? Hyrax::FileMetadata
           raise ::Valkyrie::Persistence::ObjectNotFoundError,
-                "Result type #{result.internal_resource} for alternate_identifier #{alternate_identifier} is not a `Hyrax::FileMetadata`"
+                "Result type #{result&.internal_resource} for alternate_identifier #{alternate_identifier} is not a `Hyrax::FileMetadata`"
         end
         result
       end
@@ -64,10 +64,10 @@ module Hyrax
       # @example
       #   Hyrax.query_service.find_file_metadata_by_use(use: ::RDF::URI("http://pcdm.org/ExtractedText"))
       def find_many_file_metadata_by_use(resource:, use:)
-        return [] unless resource.try(:file_ids)
+        return [] if resource.try(:file_ids).blank?
 
         results = find_many_file_metadata_by_ids(ids: resource.file_ids)
-        results.select { |fm| fm.type.include?(use) }
+        results.select { |fm| fm.pcdm_use.include?(use) }
       end
     end
   end

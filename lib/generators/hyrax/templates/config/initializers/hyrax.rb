@@ -22,6 +22,9 @@ Hyrax.config do |config|
   # avoid clashes if you plan to use the default (dct:hasFormat) for other relations.
   # config.rendering_predicate = ::RDF::DC.hasFormat
 
+  # Configure the Logger for the Hyrax application; by default it is the Rails.logger.
+  # config.logger = Rails.logger
+
   # Email recipient of messages sent via the contact form
   # config.contact_email = "repo-admin@example.org"
 
@@ -56,7 +59,7 @@ Hyrax.config do |config|
 
   # Hyrax uses NOIDs for files and collections instead of Fedora UUIDs
   # where NOID = 10-character string and UUID = 32-character string w/ hyphens
-  # config.enable_noids = true
+  config.enable_noids = false
 
   # Template for your repository's NOID IDs
   # config.noid_template = ".reeddeeddk"
@@ -92,7 +95,7 @@ Hyrax.config do |config|
 
   # Location autocomplete uses geonames to search for named regions
   # Username for connecting to geonames
-  # config.geonames_username = ''
+  config.geonames_username = ENV['GEONAMES_USERNAME'] || ''
 
   # Should the acceptance of the licence agreement be active (checkbox), or
   # implied when the save button is pressed? Set to true for active
@@ -165,6 +168,10 @@ Hyrax.config do |config|
   #  config.upload_path = ->() { Rails.root + 'tmp' + 'uploads' }
   #  config.cache_path = ->() { Rails.root + 'tmp' + 'uploads' + 'cache' }
 
+  # The registered candidate derivative services.  In the array, the first `valid?` candidate will
+  # handle the derivative generation.
+  # config.derivative_services = [Hyrax::FileSetDerivativesService]
+
   # Location on local file system where derivatives will be stored
   # If you use a multi-server architecture, this MUST be a shared volume
   # config.derivatives_path = Rails.root.join('tmp', 'derivatives')
@@ -228,20 +235,56 @@ Hyrax.config do |config|
   # Identify the model class name that will be used for Collections in your app
   # (i.e. ::Collection for ActiveFedora, Hyrax::PcdmCollection for Valkyrie)
   # config.collection_model = '::Collection'
-  # config.collection_model = 'Hyrax::PcdmCollection'
+  config.collection_model = 'Hyrax::PcdmCollection'
 
   # Identify the model class name that will be used for Admin Sets in your app
   # (i.e. AdminSet for ActiveFedora, Hyrax::AdministrativeSet for Valkyrie)
   # config.admin_set_model = 'AdminSet'
-  # config.admin_set_model = 'Hyrax::AdministrativeSet'
+  config.admin_set_model = 'Hyrax::AdministrativeSet'
+
+  # Identify the form that will be used for Admin Sets
+  # config.administrative_set_form = Hyrax::Forms::AdministrativeSetForm
+
+  # Identify the indexer that will be used for Admin Sets
+  # config.administrative_set_indexer = Hyrax::Indexers::AdministrativeSetIndexer
+
+  # Identify the form that will be used for File Sets
+  # config.file_set_form = Hyrax::Forms::FileSetForm
+
+  # Identify the indexer that will be used for File Sets
+  # config.file_set_indexer = Hyrax::Indexers::FileSetIndexer
+
+  # Service for resolving {FileMetadata} nodes by status, e.g. "primary", rather
+  # than use.
+  # config.file_set_file_service = Hyrax::FileSetFileService
+
+  # Identify the form that will be used for Collections
+  # config.pcdm_collection_form = Hyrax::Forms::PcdmCollectionForm
+
+  # Identify the indexer that will be used for Collections
+  # config.pcdm_collection_indexer = Hyrax::Indexers::PcdmCollectionIndexer
+
+  # Provide a proc for form generation for Objects
+  # config.pcdm_object_form_builder = lambda do |model_class|
+  #   Hyrax::Forms::PcdmObjectForm(model_class)
+  # end
+
+  # Provide a proc for indexer generation for Objects
+  # config.pcdm_object_indexer_builder = lambda do |model_class|
+  #   Hyrax::Indexers::PcdmObjectIndexer(model_class)
+  # end
+
+  ## Enable Valkyrie only mode
+  config.use_valkyrie = true
+  config.disable_wings = true
 
   # When your application is ready to use the valkyrie index instead of the one
   # maintained by active fedora, you will need to set this to true. You will
   # also need to update your Blacklight configuration.
-  # config.query_index_from_valkyrie = false
+  config.query_index_from_valkyrie = true
 
   ## Configure index adapter for Valkyrie::Resources to use solr readonly indexer
-  # config.index_adapter = :solr_index
+  config.index_adapter = :solr_index
 
   ## Fedora import/export tool
   #
@@ -256,7 +299,7 @@ Hyrax.config do |config|
     if defined? BrowseEverything
       config.browse_everything = BrowseEverything.config
     else
-      Rails.logger.warn "BrowseEverything is not installed"
+      Hyrax.logger.warn "BrowseEverything is not installed"
     end
   rescue Errno::ENOENT
     config.browse_everything = nil

@@ -62,7 +62,7 @@ module Hyrax
             # Escape any space characters, so that this is a legal URI
             uri = URI.parse(Addressable::URI.escape(file_info[:url]))
             unless self.class.validate_remote_url(uri)
-              Rails.logger.error "User #{user.user_key} attempted to ingest file from url #{file_info[:url]}, which doesn't pass validation"
+              Hyrax.logger.error "User #{user.user_key} attempted to ingest file from url #{file_info[:url]}, which doesn't pass validation"
               return false
             end
             auth_header = file_info.fetch(:auth_header, {})
@@ -84,7 +84,7 @@ module Hyrax
               path.start_with?(dir) && path.length > dir.length
             end
           else
-            Rails.logger.debug "Assuming #{uri.scheme} uri is valid without a serious attempt to validate: #{uri}"
+            Hyrax.logger.debug "Assuming #{uri.scheme} uri is valid without a serious attempt to validate: #{uri}"
             true
           end
         end
@@ -93,19 +93,13 @@ module Hyrax
 
         def create_file_from_url(uri, file_name, auth_header)
           import_url = URI.decode_www_form_component(uri.to_s)
-          use_valkyrie = false
-          case curation_concern
-          when Valkyrie::Resource
-            file_set = Hyrax.persister.save(resource: Hyrax::FileSet.new(import_url: import_url, label: file_name))
-            use_valkyrie = true
-          else
-            file_set = ::FileSet.new(import_url: import_url, label: file_name)
-          end
-          __create_file_from_url(file_set: file_set, uri: uri, auth_header: auth_header, use_valkyrie: use_valkyrie)
+          file_set = ::FileSet.new(import_url: import_url, label: file_name)
+
+          __create_file_from_url(file_set: file_set, uri: uri, auth_header: auth_header)
         end
 
-        def __create_file_from_url(file_set:, uri:, auth_header:, use_valkyrie: Hyrax.config.use_valkyrie?)
-          actor = file_set_actor_class.new(file_set, user, use_valkyrie: use_valkyrie)
+        def __create_file_from_url(file_set:, uri:, auth_header:)
+          actor = file_set_actor_class.new(file_set, user)
           actor.create_metadata(visibility: curation_concern.visibility)
           actor.attach_to_work(curation_concern)
           file_set.save! if file_set.respond_to?(:save!)

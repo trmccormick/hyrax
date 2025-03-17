@@ -5,10 +5,10 @@ module Hyrax
     ##
     # @api public
     # @see https://github.com/samvera/valkyrie/wiki/ChangeSets-and-Dirty-Tracking
-    class PcdmCollectionForm < Valkyrie::ChangeSet # rubocop:disable Metrics/ClassLength
+    class PcdmCollectionForm < Hyrax::Forms::ResourceForm # rubocop:disable Metrics/ClassLength
       include Hyrax::FormFields(:core_metadata)
 
-      BannerInfoPrepopulator = lambda do |_options|
+      BannerInfoPrepopulator = lambda do |**_options|
         self.banner_info ||= begin
           banner_info = CollectionBrandingInfo.where(collection_id: id.to_s, role: "banner")
           banner_file = File.split(banner_info.first.local_path).last unless banner_info.empty?
@@ -19,7 +19,7 @@ module Hyrax
         end
       end
 
-      LogoInfoPrepopulator = lambda do |_options|
+      LogoInfoPrepopulator = lambda do |**_options|
         self.logo_info ||= begin
           logos_info = CollectionBrandingInfo.where(collection_id: id.to_s, role: "logo")
 
@@ -32,10 +32,6 @@ module Hyrax
           end
         end
       end
-
-      property :human_readable_type, writable: false
-      property :date_modified, readable: false
-      property :date_uploaded, readable: false
 
       property :depositor, required: true
       property :collection_type_gid, required: true
@@ -83,6 +79,15 @@ module Hyrax
       # @return [Boolean] whether there are terms to display 'below-the-fold'
       def display_additional_fields?
         secondary_terms.any?
+      end
+
+      ##
+      # This feature is not supported in Valkyrie collections and should be removed as part of #5764
+      # However, the depreciated method is still needed for some specs
+      # @return [] always empty.
+      def select_files
+        Deprecation.warn "`Hyrax::PcdmCollection` does not currently support thumbnail_id. Collection thumbnails need to be redesigned as part of issue #5764"
+        []
       end
 
       private

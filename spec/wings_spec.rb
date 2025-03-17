@@ -1,8 +1,11 @@
 # frozen_string_literal: true
+
+return if Hyrax.config.disable_wings
+
 require 'spec_helper'
 require 'wings'
 
-RSpec.describe Wings do
+RSpec.describe Wings, :active_fedora do
   describe 'WorkSearchBuilder' do
     it "does not pollute the class variables after separate calls" do
       generic_work_search_builder = described_class::WorkSearchBuilder(Hyrax::Test::SimpleWork)

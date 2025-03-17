@@ -1,16 +1,9 @@
 # frozen_string_literal: true
-RSpec.describe ::Collection, type: :model do
+RSpec.describe ::Collection, :active_fedora, type: :model do
   let(:collection) { build(:public_collection_lw) }
 
   it "has open visibility" do
     expect(collection.read_groups).to eq ['public']
-  end
-
-  describe '#bytes' do
-    it 'returns a hard-coded integer and issues a deprecation warning' do
-      expect(Deprecation).to receive(:warn).at_least(:once)
-      expect(collection.bytes).to eq(0)
-    end
   end
 
   describe "#validates_with" do
@@ -163,9 +156,9 @@ RSpec.describe ::Collection, type: :model do
       expect { collection.collection_type_gid = nil }.to raise_error(URI::InvalidURIError)
     end
 
-    it 'updates the collection_type instance variable' do
+    it 'updates the collection_type' do
       expect { collection.collection_type_gid = collection_type.to_global_id }
-        .to change { collection.collection_type }
+        .to change { Hyrax::CollectionType.for(collection: collection) }
         .from(create(:user_collection_type)).to(collection_type)
     end
 
@@ -177,30 +170,6 @@ RSpec.describe ::Collection, type: :model do
     end
   end
 
-  describe '#collection_type' do
-    let(:collection) { described_class.new(collection_type: collection_type) }
-    let(:collection_type) { create(:collection_type) }
-
-    it 'returns a collection_type instance from the collection_type_gid' do
-      expect(collection.collection_type).to be_kind_of(Hyrax::CollectionType)
-      expect(collection.collection_type).to eq collection_type
-    end
-  end
-
-  describe 'collection type delegated methods' do
-    subject { build(:collection_lw) }
-
-    it { is_expected.to delegate_method(:nestable?).to(:collection_type) }
-    it { is_expected.to delegate_method(:discoverable?).to(:collection_type) }
-    it { is_expected.to delegate_method(:brandable?).to(:collection_type) }
-    it { is_expected.to delegate_method(:sharable?).to(:collection_type) }
-    it { is_expected.to delegate_method(:share_applies_to_new_works?).to(:collection_type) }
-    it { is_expected.to delegate_method(:allow_multiple_membership?).to(:collection_type) }
-    it { is_expected.to delegate_method(:require_membership?).to(:collection_type) }
-    it { is_expected.to delegate_method(:assigns_workflow?).to(:collection_type) }
-    it { is_expected.to delegate_method(:assigns_visibility?).to(:collection_type) }
-  end
-
   describe '.after_destroy' do
     it 'will destroy the associated permission template' do
       collection = build(:collection_lw, with_permission_template: true)
@@ -208,7 +177,7 @@ RSpec.describe ::Collection, type: :model do
     end
   end
 
-  describe '#reset_access_controls!' do
+  describe 'permission_template reset_access_controls_for' do
     let!(:user) { build(:user) }
     let(:collection_type) { create(:collection_type) }
     let!(:collection) { FactoryBot.build(:collection_lw, user: user, collection_type: collection_type) }
@@ -226,25 +195,25 @@ RSpec.describe ::Collection, type: :model do
 
     it 'resets user edit access' do
       expect(collection.edit_users).to match_array([user.user_key])
-      collection.reset_access_controls!
+      permission_template.reset_access_controls_for(collection: collection)
       expect(collection.edit_users).to match_array([user.user_key, 'mgr1@ex.com', 'mgr2@ex.com'])
     end
 
     it 'resets group edit access' do
       expect(collection.edit_groups).to match_array([])
-      collection.reset_access_controls!
+      permission_template.reset_access_controls_for(collection: collection)
       expect(collection.edit_groups).to match_array(['managers', ::Ability.admin_group_name])
     end
 
     it 'resets user read access' do
       expect(collection.read_users).to match_array([])
-      collection.reset_access_controls!
+      permission_template.reset_access_controls_for(collection: collection)
       expect(collection.read_users).to match_array(['vw1@ex.com', 'vw2@ex.com', 'dep1@ex.com', 'dep2@ex.com'])
     end
 
     it 'resets group read access' do
       expect(collection.read_groups).to match_array([])
-      collection.reset_access_controls!
+      permission_template.reset_access_controls_for(collection: collection)
       expect(collection.read_groups).to match_array(['viewers', 'depositors', ::Ability.admin_group_name])
     end
   end
@@ -288,57 +257,6 @@ RSpec.describe ::Collection, type: :model do
       it 'will not be created by default' do
         expect { build(:collection_lw) }.not_to change { Hyrax::PermissionTemplateAccess.count }
       end
-    end
-
-    describe 'when including nesting indexing', with_nested_reindexing: true do
-      # Nested indexing requires that the user's permissions be saved
-      # on the Fedora object... if simply in local memory, they are
-      # lost when the adapter pulls the object from Fedora to reindex.
-      let(:user) { create(:user) }
-      let(:collection) { create(:collection, user: user) }
-
-      it 'will authorize the creating user' do
-        expect(user.can?(:edit, collection)).to be true
-      end
-    end
-
-    describe 'when including with_nesting_attributes' do
-      let(:collection_type) { create(:collection_type) }
-      let(:blacklight_config) { CatalogController.blacklight_config }
-      let(:repository) { Blacklight::Solr::Repository.new(blacklight_config) }
-      let(:current_ability) { instance_double(Ability, admin?: true) }
-      let(:scope) { double('Scope', can?: true, current_ability: current_ability, repository: repository, blacklight_config: blacklight_config) }
-
-      context 'when building a collection' do
-        let(:coll123) do
-          build(:collection_lw,
-                id: 'Collection123',
-                collection_type_gid: collection_type.to_global_id,
-                with_nesting_attributes:
-                { ancestors: ['Parent_1'],
-                  parent_ids: ['Parent_1'],
-                  pathnames: ['Parent_1/Collection123'],
-                  depth: 2 })
-        end
-        let(:nesting_attributes) do
-          Hyrax::Collections::NestedCollectionQueryService::NestingAttributes.new(id: coll123.id, scope: scope)
-        end
-
-        it 'will persist a queryable solr document with the given attributes' do
-          expect(nesting_attributes.id).to eq('Collection123')
-          expect(nesting_attributes.parents).to eq(['Parent_1'])
-          expect(nesting_attributes.pathnames).to eq(['Parent_1/Collection123'])
-          expect(nesting_attributes.ancestors).to eq(['Parent_1'])
-          expect(nesting_attributes.depth).to eq(2)
-        end
-      end
-    end
-  end
-
-  describe '#update_nested_collection_relationship_indices', :with_nested_reindexing do
-    it 'will be called once for the Collection resource and once for the nested ACL permission resource' do
-      expect(Samvera::NestingIndexer).to receive(:reindex_relationships).exactly(2).times.with(id: kind_of(String), extent: kind_of(String))
-      collection.save!
     end
   end
 end

@@ -5,7 +5,7 @@
 replicaCount: 1
 
 image:
-  repository: samveralabs/dassie
+  repository: ghcr.io/samvera/hyrax/dassie
   pullPolicy: IfNotPresent
   # Overrides the image tag whose default is the chart appVersion.
   tag: ""
@@ -22,6 +22,7 @@ loadSolrConfigSet: true
 #   ignored if `solr.enabled` is true
 solrExistingSecret: ""
 externalSolrHost: ""
+externalSolrPort: ""
 externalSolrUser: ""
 externalSolrPassword: ""
 externalSolrCollection: "hyrax"
@@ -64,6 +65,10 @@ extraEnvFrom: []
 # stdin: true
 # tty: true
 extraContainerConfiguration: []
+
+## @param extraDeploy Array of extra objects to deploy with the release (evaluated as a template)
+##
+extraDeploy: []
 
 # an existing volume containing a Hyrax-based application
 # must be a ReadWriteMany volume if worker is enabled
@@ -114,6 +119,7 @@ externalPostgresql: {}
 #  username:
 #  password:
 #  database:
+#  port:
 
 embargoRelease:
   enabled: true
@@ -182,13 +188,23 @@ readinessProbe:
   # failureThreshold: 6
   # successThreshold: 1
 
+# consider enabling if you are experiencing slow startup times
+startupProbe:
+  enabled: false
+  # path: "/healthz"
+  # initialDelaySeconds: 30
+  # periodSeconds: 30
+  # timeoutSeconds: 5
+  # failureThreshold: 3
+  # successThreshold: 1
+
 resources: {}
 
 worker:
   enabled: true
   replicaCount: 3
   image:
-    repository: samveralabs/dassie-worker
+    repository: ghcr.io/samvera/hyrax/dassie-worker
     pullPolicy: IfNotPresent
     tag: ""
   extraInitContainers: []
@@ -201,25 +217,52 @@ worker:
   affinity: {}
   resources: {}
 
+  # see: https://github.com/mperham/sidekiq/wiki/Kubernetes#health-checks
+  readinessProbe:
+    enabled: false
+    # command:
+    #  - cat
+    #  - /app/samvera/hyrax-webapp/tmp/sidekiq_process_has_started_and_will_begin_processing_jobs
+    # initialDelaySeconds: 10
+    # periodSeconds: 2
+    # timeoutSeconds: 1
+    # failureThreshold: 10
+    # successThreshold: 2
+
 fcrepo:
   enabled: true
-  externalDatabaseUsername: "hyrax"
   servicePort: 8080
   postgresql:
     enabled: false
     image:
       repository: bitnami/postgresql
-      tag: 12.3.0
+      tag: 12.17.0-debian-11-r28
+
+# configuration for an external/existing fits service;
+#   ignored if `fits.enabled` is true
+externalFits:
+  enabled: false
+  url: "" # existing FITS servlet endpoint
+
+fits:
+  enabled: true
+  servicePort: 8080
+  subPath: /fits
 
 memcached:
   enabled: false
+  image:
+    repository: bitnami/memcached
+    tag: 1.6.15-debian-11-r12
 
 minio:
   enabled: false
-  accessKey:
-    password: hyrax-access-key
-  secretKey:
-    password: hyrax-secret-key
+  image:
+    repository: bitnami/minio
+    tag: 2022.7.4-debian-11-r0
+  auth:
+    rootUser: hyrax-access-key
+    rootPassword: hyrax-secret-key
   persistence:
     enabled: false
   # defaultBuckets: bucketOne;bucketTwo
@@ -228,27 +271,39 @@ postgresql:
   enabled: true
   image:
     repository: bitnami/postgresql
-    tag: 12.3.0
-  postgresqlUsername: hyrax
-  postgresqlPassword: hyrax_pass
-  postgresqlDatabase: hyrax
-  servicePort: 5432
-  # cpu: 1000m
-  # memory: 1Gi
-  # persistence:
-  #   size: 10Gi
-
+    tag: 12.11.0-debian-11-r12
+  auth:
+    database: hyrax
+    password: hyrax_pass
+    username: hyrax
+  containerPorts:
+    postgresql: 5432
+  primary:
+    service:
+      ports:
+        postgresql: 5432
+  readReplicas:
+    service:
+      ports:
+        postgresql: 5432
 
 ## Nginx proxy is used to keep puma from having to serve static assets
 ## and to act as an auth proxy for Cantelope
 nginx:
   enabled: false
+  image:
+    repository: bitnami/nginx
+    tag: 1.23.0-debian-11-r1
+  # this needs to be set since templates/ingress.yaml tries to
+  # evaluate .Values.nginx.service.port, and it needs to at least evaluate to
+  # nil, rather than throw an error (which it does if `service` itself is nil).
+  # you can change to NodePort or LoadBalancer if direct access is needed.
+  # ClusterIP is used as we assume an ingress is in place.
+  service:
+    type: ClusterIP
+    port: 80
   # The set up below does malicious bot / ip blocking and mounts
-  # vaolumes to allow nginx to server assets and other public directory items
-  # image:
-  #   registry: registry.gitlab.com
-  #   repository: notch8/scripts/bitnami-nginx
-  #   tag: 1.21.5-debian-10-r4
+  # volumes to allow nginx to server assets and other public directory items
   # extraVolumes:
   #   - name: "uploads"
   #     persistentVolumeClaim:
@@ -378,18 +433,24 @@ nginx:
 
 redis:
   enabled: true
-  password: mysecret
+  image:
+    repository: bitnami/redis
+    tag: 7.0.2-debian-11-r7
+  auth:
+    password: mysecret
 
 solr:
   enabled: true
   image:
     repository: bitnami/solr
-    tag: 8.11.1
-  authentication:
+    tag: 8.11.2-debian-11-r4
+  containerPorts:
+    http: 8983
+  auth:
     enabled: true
     adminUsername: admin
     adminPassword: admin
-  coreName: hyrax
+  coreNames: hyrax
   collection: hyrax
   cloudBootstrap: true
   cloudEnabled: true
@@ -408,9 +469,11 @@ autoscaling:
   # targetMemoryUtilizationPercentage: 80
 
 global:
+  # These global postgresql values are used by the fcrepo chart
   postgresql:
-    postgresqlUsername: hyrax
-    postgresqlPassword: hyrax_pass
+    auth:
+      username: hyrax
+      password: hyrax_pass
   # This is th name of the running rails server pod
   hyraxHostName: hyrax
 

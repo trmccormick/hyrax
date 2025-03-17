@@ -9,7 +9,7 @@ spec:
   replicas: {{ .Values.worker.replicaCount }}
   selector:
     matchLabels:
-      {{- include "hyrax.selectorLabels" . | nindent 6 }}
+      {{- include "hyrax.workerSelectorLabels" . | nindent 6 }}
   template:
     metadata:
     {{- with .Values.podAnnotations }}
@@ -17,10 +17,10 @@ spec:
         {{- toYaml . | nindent 8 }}
     {{- end }}
       labels:
-        {{- include "hyrax.selectorLabels" . | nindent 8 }}
+        {{- include "hyrax.workerSelectorLabels" . | nindent 8 }}
     spec:
       initContainers:
-        - name: db-wait
+        - name: service-wait
           image: "{{ .Values.worker.image.repository }}:{{ .Values.worker.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.worker.image.pullPolicy }}
           envFrom:
@@ -29,11 +29,13 @@ spec:
             - secretRef:
                 name: {{ template "hyrax.fullname" . }}
           env:
-            {{- toYaml .Values.worker.extraEnvVars | nindent 12 }}
+            {{- if .Values.extraEnvVars }}
+            {{- include "hyrax.tplvalues.render" (dict "value" .Values.extraEnvVars "context" $) | nindent 12 }}
+            {{- end }}
           command:
             - sh
             - -c
-            - db-wait.sh "$REDIS_HOST:6379"
+            - service-wait.sh "$REDIS_HOST:6379"
         {{- if .Values.worker.extraInitContainers }}
         {{- toYaml .Values.worker.extraInitContainers | nindent 8 }}
         {{- end }}
@@ -63,7 +65,20 @@ spec:
               {{- toYaml . | nindent 12 }}
             {{- end }}
           env:
-            {{- toYaml .Values.worker.extraEnvVars | nindent 12 }}
+            {{- if .Values.extraEnvVars }}
+            {{- include "hyrax.tplvalues.render" (dict "value" .Values.extraEnvVars "context" $) | nindent 12 }}
+            {{- end }}
+          {{- if .Values.worker.readinessProbe.enabled }}
+          readinessProbe:
+            exec:
+              command:
+                {{- toYaml .Values.worker.readinessProbe.command | nindent 16 }}
+            failureThreshold: {{ .Values.worker.readinessProbe.failureThreshold }}
+            initialDelaySeconds: {{ .Values.worker.readinessProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.worker.readinessProbe.periodSeconds }}
+            successThreshold: {{ .Values.worker.readinessProbe.successThreshold }}
+            timeoutSeconds: {{ .Values.worker.readinessProbe.timeoutSeconds }}
+          {{- end }}
           volumeMounts:
             - name: derivatives
               mountPath: /app/samvera/derivatives

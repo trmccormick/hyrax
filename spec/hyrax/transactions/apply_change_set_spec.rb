@@ -9,7 +9,7 @@ RSpec.describe Hyrax::Transactions::ApplyChangeSet do
   let(:change_set) { Hyrax::ChangeSet.for(resource) }
   let(:resource)   { build(:hyrax_work) }
   let(:user)       { create(:user) }
-  let(:xmas)       { DateTime.parse('2018-12-25 11:30').iso8601 }
+  let(:xmas)       { DateTime.parse('2018-12-25 11:30') }
 
   before { allow(Hyrax::TimeService).to receive(:time_in_utc).and_return(xmas) }
 

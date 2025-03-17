@@ -1,9 +1,12 @@
 # frozen_string_literal: true
+
+return if Hyrax.config.disable_wings
+
 require 'spec_helper'
 require 'wings'
 require 'wings/active_fedora_converter'
 
-RSpec.describe Wings::ActiveFedoraConverter, :clean_repo do
+RSpec.describe Wings::ActiveFedoraConverter, :active_fedora, :clean_repo do
   subject(:converter) { described_class.new(resource: resource) }
   let(:attributes)    { { id: id } }
   let(:id)            { 'moomin_id' }
@@ -33,9 +36,17 @@ RSpec.describe Wings::ActiveFedoraConverter, :clean_repo do
         expect(work.errors.full_messages).to eq(converted_work.errors.full_messages)
       end
     end
-    context 'with an invalid FileSet object' do
+
+    context 'with an invalid FileSet object', unless: Hyrax.config.use_valkyrie? do
+      # valkyrie backed resources do not respond to `valid?`.
+      let(:expired_lease) { Hydra::AccessControls::Lease.new(lease_expiration_date: (Time.zone.today - 2).to_datetime) }
+      let(:file_set) { ::FileSet.new }
+
+      before do
+        allow(file_set).to receive(:lease).and_return(expired_lease)
+      end
+
       it 'round trip converts to an FileSet object this is also invalid' do
-        file_set = ::FileSet.new(lease_expiration_date: 1.day.ago)
         expect(file_set).not_to be_valid
         converted_file_set = described_class.new(resource: file_set.valkyrie_resource).convert
         expect(converted_file_set).not_to be_valid
@@ -60,6 +71,55 @@ RSpec.describe Wings::ActiveFedoraConverter, :clean_repo do
 
         expect(converter.convert)
           .to have_attributes state: Hyrax::ResourceStatus::INACTIVE
+      end
+    end
+
+    context 'when given a FileMetadata node' do
+      let(:resource) { Hyrax::FileMetadata.new(file_identifier: file.id) }
+      let(:io) { fixture_file_upload('/world.png', 'image/png') }
+      let(:file) do
+        file_set = FactoryBot.valkyrie_create(:hyrax_file_set)
+        storage_adapter.upload(file: io, resource: file_set, original_filename: 'test-world.png')
+      end
+
+      context 'when it describes an ActiveFedora File' do
+        let(:storage_adapter) { Valkyrie::StorageAdapter.find(:active_fedora) }
+
+        it 'converts to a Hydra::Pcdm::File' do
+          expect(converter.convert).to be_a Hydra::PCDM::File
+        end
+
+        it 'refers to the correct file id' do
+          expect(converter.convert)
+            .to have_attributes(uri: storage_adapter.fedora_identifier(id: file.id))
+        end
+
+        it 'round trips' do
+          af = converter.convert
+          af.save
+          io.rewind
+          expect(Hydra::PCDM::File.find(af.id).content).to eq io.read
+        end
+      end
+
+      context 'when it describes a file for an arbitrary storage adapter' do
+        let(:storage_adapter) { Valkyrie::StorageAdapter.find(:test_disk) }
+
+        it 'converts to a generic FileMetadataNode' do
+          expect(converter.convert).to be_a Wings::FileMetadataNode
+        end
+
+        it 'refers to the correct file id' do
+          expect(converter.convert)
+            .to have_attributes(file_identifier: contain_exactly(file.id))
+        end
+
+        it 'round trips' do
+          af = converter.convert
+          af.save
+
+          expect(ActiveFedora::Base.find(af.id)).to be_a(Wings::FileMetadataNode)
+        end
       end
     end
 
@@ -95,7 +155,7 @@ RSpec.describe Wings::ActiveFedoraConverter, :clean_repo do
       end
 
       it 'supports indexing' do
-        expect(converter.convert.indexing_service).to be_a Hyrax::ValkyrieIndexer
+        expect(converter.convert.indexing_service).to be_a Hyrax::Indexers::ResourceIndexer
       end
 
       it 'does not add superflous metadata'
@@ -160,7 +220,7 @@ RSpec.describe Wings::ActiveFedoraConverter, :clean_repo do
         before do
           module Hyrax::Test
             module Converter
-              class Resource < Valkyrie::Resource
+              class Resource < Hyrax::Resource
                 attribute :member_ids, Valkyrie::Types::Array.of(Valkyrie::Types::ID)
               end
             end
@@ -222,7 +282,7 @@ RSpec.describe Wings::ActiveFedoraConverter, :clean_repo do
       end
 
       it 'has the given collection type' do
-        expect(converter.convert.collection_type.to_global_id.to_s)
+        expect(Hyrax::CollectionType.for(collection: converter.convert).to_global_id.to_s)
           .to eq resource.collection_type_gid
       end
 
@@ -306,7 +366,7 @@ RSpec.describe Wings::ActiveFedoraConverter, :clean_repo do
         end
 
         it 'converts pcdm use URIs as types' do
-          expect { resource.type = custom_type }
+          expect { resource.pcdm_use = custom_type }
             .to change { converter.convert.metadata_node.type }
             .to contain_exactly(custom_type)
         end

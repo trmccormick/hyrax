@@ -1,6 +1,5 @@
 # frozen_string_literal: true
 RSpec.describe Hyrax::Forms::Dashboard::NestCollectionForm, type: :form do
-  let(:nesting_depth_result) { true }
   let(:context) { double('Context', current_user: user) }
   let(:user)    { create(:user) }
 
@@ -10,8 +9,7 @@ RSpec.describe Hyrax::Forms::Dashboard::NestCollectionForm, type: :form do
   end
 
   let(:query_service) do
-    double(Hyrax::Collections::NestedCollectionQueryService,
-           valid_combined_nesting_depth?: nesting_depth_result)
+    double(Hyrax::Collections::NestedCollectionQueryService)
   end
 
   describe '.default_query_service' do
@@ -20,7 +18,6 @@ RSpec.describe Hyrax::Forms::Dashboard::NestCollectionForm, type: :form do
     it { is_expected.to respond_to(:available_parent_collections) }
     it { is_expected.to respond_to(:available_child_collections) }
     it { is_expected.to respond_to(:parent_and_child_can_nest?) }
-    it { is_expected.to respond_to(:valid_combined_nesting_depth?) }
   end
 
   describe '.default_persistence_service' do
@@ -29,7 +26,7 @@ RSpec.describe Hyrax::Forms::Dashboard::NestCollectionForm, type: :form do
     it { is_expected.to respond_to(:persist_nested_collection_for) }
   end
 
-  context "when parent/child are ActiveFedora object" do
+  context "when parent/child are ActiveFedora object", :active_fedora do
     subject(:form) do
       described_class.new(parent: parent,
                           child: child,
@@ -45,16 +42,13 @@ RSpec.describe Hyrax::Forms::Dashboard::NestCollectionForm, type: :form do
     it { is_expected.to validate_presence_of(:child) }
 
     context 'parent and child nesting' do
-      let(:nesting_depth_result) { false }
-
       it 'is invalid if child cannot be nested within the parent' do
         expect(query_service).to receive(:parent_and_child_can_nest?).with(parent: parent, child: child, scope: context).and_return(false)
 
         expect { form.valid? }
           .to change { form.errors.to_hash }
           .to include parent: ["cannot have child nested within it"],
-                      child: ["cannot nest within parent"],
-                      collection: ["nesting exceeds the allowed maximum nesting depth."]
+                      child: ["cannot nest within parent"]
       end
     end
 
@@ -102,28 +96,6 @@ RSpec.describe Hyrax::Forms::Dashboard::NestCollectionForm, type: :form do
       end
     end
 
-    describe '#available_child_collections' do
-      it 'delegates to the underlying query_service' do
-        expect(query_service)
-          .to receive(:available_child_collections)
-          .with(parent: parent, scope: context)
-          .and_return(:results)
-
-        expect(form.available_child_collections).to eq(:results)
-      end
-    end
-
-    describe '#available_parent_collections' do
-      it 'delegates to the underlying query_service' do
-        expect(query_service)
-          .to receive(:available_parent_collections)
-          .with(child: child, scope: context)
-          .and_return(:results)
-
-        expect(form.available_parent_collections).to eq(:results)
-      end
-    end
-
     describe '#validate_add' do
       context 'when not nestable' do
         let(:parent) { double(nestable?: false) }
@@ -136,23 +108,10 @@ RSpec.describe Hyrax::Forms::Dashboard::NestCollectionForm, type: :form do
       end
 
       context 'when nestable' do
-        context 'when at maximum nesting level' do
-          let(:parent) { double(nestable?: true) }
-          let(:nesting_depth_result) { false }
+        let(:parent) { double(nestable?: true) }
 
-          it 'validates the parent cannot have additional files nested' do
-            expect { form.validate_add }
-              .to change { form.errors.to_hash }
-              .to include collection: ["nesting exceeds the allowed maximum nesting depth."]
-          end
-        end
-
-        context 'when valid' do
-          let(:parent) { double(nestable?: true) }
-
-          it 'validates the parent can contain nested subcollections' do
-            expect(form.validate_add).to eq true
-          end
+        it 'validates the parent can contain nested subcollections' do
+          expect(form.validate_add).to eq true
         end
       end
     end
@@ -220,16 +179,13 @@ RSpec.describe Hyrax::Forms::Dashboard::NestCollectionForm, type: :form do
     it { is_expected.to validate_presence_of(:child) }
 
     context 'parent and child nesting' do
-      let(:nesting_depth_result) { false }
-
       it 'is invalid if child cannot be nested within the parent' do
         expect(query_service).to receive(:parent_and_child_can_nest?).with(parent: parent, child: child, scope: context).and_return(false)
 
         expect { form.valid? }
           .to change { form.errors.to_hash }
           .to include parent: ["cannot have child nested within it"],
-                      child: ["cannot nest within parent"],
-                      collection: ["nesting exceeds the allowed maximum nesting depth."]
+                      child: ["cannot nest within parent"]
       end
     end
 
@@ -277,28 +233,6 @@ RSpec.describe Hyrax::Forms::Dashboard::NestCollectionForm, type: :form do
       end
     end
 
-    describe '#available_child_collections' do
-      it 'delegates to the underlying query_service' do
-        expect(query_service)
-          .to receive(:available_child_collections)
-          .with(parent: parent, scope: context)
-          .and_return(:results)
-
-        expect(form.available_child_collections).to eq(:results)
-      end
-    end
-
-    describe '#available_parent_collections' do
-      it 'delegates to the underlying query_service' do
-        expect(query_service)
-          .to receive(:available_parent_collections)
-          .with(child: child, scope: context)
-          .and_return(:results)
-
-        expect(form.available_parent_collections).to eq(:results)
-      end
-    end
-
     describe '#validate_add' do
       context 'when not nestable' do
         let(:parent_nestable) { false }
@@ -311,23 +245,10 @@ RSpec.describe Hyrax::Forms::Dashboard::NestCollectionForm, type: :form do
       end
 
       context 'when nestable' do
-        context 'when at maximum nesting level' do
-          let(:parent_nestable) { true }
-          let(:nesting_depth_result) { false }
+        let(:parent_nestable) { true }
 
-          it 'validates the parent cannot have additional files nested' do
-            expect { form.validate_add }
-              .to change { form.errors.to_hash }
-              .to include collection: ["nesting exceeds the allowed maximum nesting depth."]
-          end
-        end
-
-        context 'when valid' do
-          let(:parent_nestable) { true }
-
-          it 'validates the parent can contain nested subcollections' do
-            expect(form.validate_add).to eq true
-          end
+        it 'validates the parent can contain nested subcollections' do
+          expect(form.validate_add).to eq true
         end
       end
     end

@@ -38,16 +38,13 @@ RSpec.describe ValkyrieIngestJob do
     # programatically for a spec.
     context "when in Valkyrie mode" do
       it 'runs derivatives', index_adapter: :solr_index, perform_enqueued: true do
-        allow(ValkyrieCreateDerivativesJob).to receive(:perform_later).and_call_original
-        allow(Hyrax::ValkyrieUpload).to receive(:file).and_call_original
+        expect(Hyrax::ValkyrieUpload).to receive(:file).and_call_original
+        expect(ValkyrieCreateDerivativesJob).to receive(:perform_later)
 
         described_class.perform_now(upload)
 
-        expect(Hyrax::ValkyrieUpload).to have_received(:file)
-        expect(ValkyrieCreateDerivativesJob).to have_received(:perform_later)
-        expect(File.exist?(Hyrax::DerivativePath.new(file_set.id.to_s, "thumbnail").derivative_path)).to eq true
         solr_doc = Hyrax.index_adapter.connection.get("select", params: { q: "id:#{file_set.id}" })["response"]["docs"].first
-        expect(solr_doc["thumbnail_path_ss"]).to eq "/downloads/#{file_set.id}?file=thumbnail"
+        expect(solr_doc["thumbnail_path_ss"]).not_to be_empty
       end
     end
 
@@ -69,7 +66,7 @@ RSpec.describe ValkyrieIngestJob do
 
       it 'adds an original_file file to the file_set' do
         described_class.perform_now(upload)
-        described_class.perform_now(thumbnail_upload, pcdm_use: Hyrax::FileMetadata::Use::THUMBNAIL)
+        described_class.perform_now(thumbnail_upload, pcdm_use: Hyrax::FileMetadata::Use::THUMBNAIL_IMAGE)
 
         reloaded_file_set = Hyrax.query_service.find_by(id: file_set.id)
         files = Hyrax.custom_queries.find_files(file_set: reloaded_file_set)

@@ -29,9 +29,14 @@ class CharacterizeJob < Hyrax::ApplicationJob
   # @param [String, NilClass] filepath the cached file within the Hyrax.config.working_path
   def perform(file_set, file_id, filepath = nil)
     raise "#{file_set.class.characterization_proxy} was not found for FileSet #{file_set.id}" unless file_set.characterization_proxy?
-    filepath = Hyrax::WorkingDirectory.find_or_retrieve(file_id, file_set.id) unless filepath && File.exist?(filepath)
+    # Ensure a fresh copy of the repo file's latest version is being worked on, if no filepath is directly provided
+    filepath = Hyrax::WorkingDirectory.copy_repository_resource_to_working_directory(Hydra::PCDM::File.find(file_id), file_set.id) unless filepath && File.exist?(filepath)
     characterize(file_set, file_id, filepath)
-    CreateDerivativesJob.perform_later(file_set, file_id, filepath)
+
+    Hyrax.publisher.publish('file.characterized',
+                            file_set: file_set,
+                            file_id: file_id,
+                            path_hint: filepath)
   end
 
   private
@@ -46,8 +51,8 @@ class CharacterizeJob < Hyrax::ApplicationJob
     # value. So later we'll ensure it's set to the new file's filename.
     reset_title = file_set.title.first == file_set.label
 
-    characterization_service.run(file_set.characterization_proxy, filepath)
-    Rails.logger.debug "Ran characterization on #{file_set.characterization_proxy.id} (#{file_set.characterization_proxy.mime_type})"
+    characterization_service.run(file_set.characterization_proxy, filepath, **Hyrax.config.characterization_options)
+    Hyrax.logger.debug "Ran characterization on #{file_set.characterization_proxy.id} (#{file_set.characterization_proxy.mime_type})"
     file_set.characterization_proxy.alpha_channels = channels(filepath) if file_set.image? && Hyrax.config.iiif_image_server?
     file_set.characterization_proxy.save!
 
@@ -60,7 +65,8 @@ class CharacterizeJob < Hyrax::ApplicationJob
     # mod time. This is done in the versioning code.
     file_set.date_modified = Hyrax::TimeService.time_in_utc if file_set.characterization_proxy.original_checksum.first != previous_checksum
 
-    # set title to label if that's how it was before this characterization
+    file_set.characterization_proxy.original_name.force_encoding("UTF-8")
+    # set title to label (i.e. file name, `original_name`) if that's how it was before this characterization
     file_set.title = [file_set.characterization_proxy.original_name] if reset_title
     # always set the label to the original_name
     file_set.label = file_set.characterization_proxy.original_name

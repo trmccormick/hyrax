@@ -35,8 +35,8 @@ module Hyrax
     include Hyrax::WithEvents
 
     attribute :alternate_ids, Valkyrie::Types::Array.of(Valkyrie::Types::ID)
-    attribute :embargo,       Hyrax::Embargo.optional
-    attribute :lease,         Hyrax::Lease.optional
+    attribute :embargo_id,    Valkyrie::Types::Params::ID
+    attribute :lease_id,      Valkyrie::Types::Params::ID
 
     delegate :edit_groups, :edit_groups=,
              :edit_users,  :edit_users=,
@@ -48,6 +48,50 @@ module Hyrax
       # @return [String] a human readable name for the model
       def human_readable_type
         I18n.translate("hyrax.models.#{model_name.i18n_key}", default: model_name.human)
+      end
+
+      ##
+      # @return [Boolean]
+      def collection?
+        pcdm_collection?
+      end
+
+      ##
+      # @return [Boolean]
+      def file?
+        false
+      end
+
+      ##
+      # @return [Boolean]
+      def file_set?
+        false
+      end
+
+      ##
+      # @return [Boolean]
+      def pcdm_collection?
+        false
+      end
+
+      ##
+      # @return [Boolean]
+      def pcdm_object?
+        false
+      end
+
+      ##
+      # Works are PCDM Objects which are not File Sets.
+      #
+      # @return [Boolean]
+      def work?
+        pcdm_object? && !file_set?
+      end
+
+      ##
+      # @return [String]
+      def to_rdf_representation
+        name
       end
 
       private
@@ -64,31 +108,54 @@ module Hyrax
     ##
     # @return [Boolean]
     def collection?
-      false
+      self.class.collection?
     end
 
     ##
     # @return [Boolean]
     def file?
-      false
+      self.class.file?
     end
 
     ##
     # @return [Boolean]
     def file_set?
-      false
+      self.class.file_set?
+    end
+
+    ##
+    # @return [Boolean]
+    def pcdm_collection?
+      self.class.pcdm_collection?
     end
 
     ##
     # @return [Boolean]
     def pcdm_object?
-      false
+      self.class.pcdm_object?
     end
 
     ##
+    # @return [String]
+    def to_rdf_representation
+      self.class.to_rdf_representation
+    end
+
+    ##
+    # Works are PCDM Objects which are not File Sets.
+    #
     # @return [Boolean]
     def work?
-      false
+      self.class.work?
+    end
+
+    # Its nice to know if a record is still in AF or not
+    def wings?
+      respond_to?(:head) && respond_to?(:tail)
+    end
+
+    def ==(other)
+      attributes.except(:created_at, :updated_at) == other.attributes.except(:created_at, :updated_at) if other.respond_to?(:attributes)
     end
 
     def permission_manager
@@ -101,6 +168,30 @@ module Hyrax
 
     def visibility
       visibility_reader.read
+    end
+
+    def embargo=(value)
+      raise TypeError "can't convert #{value.class} into Hyrax::Embargo" unless value.is_a? Hyrax::Embargo
+
+      @embargo = value
+      self.embargo_id = @embargo.id
+    end
+
+    def embargo
+      return @embargo if @embargo
+      @embargo = Hyrax.query_service.find_by(id: embargo_id) if embargo_id.present?
+    end
+
+    def lease=(value)
+      raise TypeError "can't convert #{value.class} into Hyrax::Lease" unless value.is_a? Hyrax::Lease
+
+      @lease = value
+      self.lease_id = @lease.id
+    end
+
+    def lease
+      return @lease if @lease
+      @lease = Hyrax.query_service.find_by(id: lease_id) if lease_id.present?
     end
 
     protected

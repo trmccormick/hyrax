@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 module Hyrax
-  RSpec.describe WorkQueryService do
+  RSpec.describe WorkQueryService, :active_fedora do
     let(:user) { create(:user) }
     let(:work_id) { 'abc' }
     let(:work_relation) { double('Work Relation') }
@@ -30,7 +30,7 @@ module Hyrax
 
       subject { work_query_service.work }
 
-      context 'when not in SOLR' do
+      context 'when in SOLR' do
         before { allow(work_relation).to receive(:find).with(work_id).and_return(expected_work) }
         it { is_expected.to eq(expected_work) }
       end

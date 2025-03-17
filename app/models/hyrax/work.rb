@@ -63,7 +63,7 @@ module Hyrax
   #   `it_behaves_like 'has_members'`.  Shared specs are defined in /lib/hyrax/specs/shared_specs/hydra_works.rb.
   # * Work to File Set: (0..m)  A work can have many file sets.
   # @example Add a file set to a work (code from Hyrax::WorkUploadsHandler#append_to_work)
-  #       work.member_ids << file_set.id
+  #       work.member_ids += [file_set.id]
   #       work.representative_id = file_set.id if work.respond_to?(:representative_id) && work.representative_id.blank?
   #       work.thumbnail_id = file_set.id if work.respond_to?(:thumbnail_id) && work.thumbnail_id.blank?
   #       Hyrax.persister.save(resource: work)
@@ -91,11 +91,8 @@ module Hyrax
   #
   # @see /lib/hyrax/specs/shared_specs/hydra_works.rb
   #
-  # @todo The description in Hydra::Works Shared Modeling is out of date and uses
-  #   terminology to describe the relationships that is no longer used in code.
-  #   Update the model and link to it.  This can be a simple relationship diagram
-  #   with a link to the original Works Shared Modeling for historical perspective.
   # @see https://wiki.lyrasis.org/display/samvera/Hydra::Works+Shared+Modeling
+  #   for a historical perspective.
   class Work < Hyrax::Resource
     include Hyrax::Schema(:core_metadata)
 
@@ -106,18 +103,12 @@ module Hyrax
     attribute :proxy_depositor,          Valkyrie::Types::String
     attribute :state,                    Valkyrie::Types::URI.default(Hyrax::ResourceStatus::ACTIVE)
     attribute :rendering_ids,            Valkyrie::Types::Array.of(Valkyrie::Types::ID).meta(ordered: true)
-    attribute :representative_id,        Valkyrie::Types::ID
-    attribute :thumbnail_id,             Valkyrie::Types::ID
+    attribute :representative_id,        Valkyrie::Types::ID.optional
+    attribute :thumbnail_id,             Valkyrie::Types::ID.optional
 
     ##
     # @return [Boolean] true
-    def pcdm_object?
-      true
-    end
-
-    ##
-    # @return [Boolean] true
-    def work?
+    def self.pcdm_object?
       true
     end
   end

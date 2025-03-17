@@ -1,6 +1,6 @@
 # frozen_string_literal: true
-require "dry/transaction"
-require "dry/transaction/operation"
+
+require 'dry/container'
 
 module Hyrax
   module Transactions
@@ -25,7 +25,9 @@ module Hyrax
       require 'hyrax/transactions/collection_create'
       require 'hyrax/transactions/collection_destroy'
       require 'hyrax/transactions/collection_update'
+      require 'hyrax/transactions/file_metadata_destroy'
       require 'hyrax/transactions/file_set_destroy'
+      require 'hyrax/transactions/file_set_update'
       require 'hyrax/transactions/work_create'
       require 'hyrax/transactions/work_destroy'
       require 'hyrax/transactions/work_update'
@@ -33,13 +35,20 @@ module Hyrax
       require 'hyrax/transactions/steps/add_to_collections'
       require 'hyrax/transactions/steps/add_to_parent'
       require 'hyrax/transactions/steps/apply_collection_type_permissions'
+      require 'hyrax/transactions/steps/apply_permission_template'
       require 'hyrax/transactions/steps/change_depositor'
+      require 'hyrax/transactions/steps/check_for_default_admin_set'
       require 'hyrax/transactions/steps/check_for_empty_admin_set'
       require 'hyrax/transactions/steps/delete_access_control'
+      require 'hyrax/transactions/steps/delete_all_file_metadata'
+      require 'hyrax/transactions/steps/delete_all_file_sets'
+      require 'hyrax/transactions/steps/delete_permission_template'
       require 'hyrax/transactions/steps/delete_resource'
       require 'hyrax/transactions/steps/ensure_admin_set'
+      require 'hyrax/transactions/steps/file_metadata_delete'
       require 'hyrax/transactions/steps/set_collection_type_gid'
       require 'hyrax/transactions/steps/remove_file_set_from_work'
+      require 'hyrax/transactions/steps/remove_from_membership'
       require 'hyrax/transactions/steps/save'
       require 'hyrax/transactions/steps/save_access_control'
       require 'hyrax/transactions/steps/save_collection_banner'
@@ -51,17 +60,6 @@ module Hyrax
       require 'hyrax/transactions/steps/set_user_as_depositor'
       require 'hyrax/transactions/steps/update_work_members'
       require 'hyrax/transactions/steps/validate'
-
-      # The following transactions and steps are deprecated.
-      require 'hyrax/transactions/create_work'
-      require 'hyrax/transactions/destroy_work'
-      require 'hyrax/transactions/update_work'
-      require 'hyrax/transactions/steps/apply_collection_permission_template'
-      require 'hyrax/transactions/steps/apply_permission_template'
-      require 'hyrax/transactions/steps/apply_visibility'
-      require 'hyrax/transactions/steps/destroy_work'
-      require 'hyrax/transactions/steps/ensure_permission_template'
-      require 'hyrax/transactions/steps/save_work'
 
       extend Dry::Container::Mixin
 
@@ -124,6 +122,10 @@ module Hyrax
           CollectionUpdate.new
         end
 
+        ops.register 'update_file_set' do
+          FileSetUpdate.new
+        end
+
         ops.register 'update_work' do
           WorkUpdate.new
         end
@@ -133,9 +135,23 @@ module Hyrax
         end
       end
 
+      namespace "file_metadata" do |ops| # Hyrax::FileMetadata
+        ops.register 'destroy' do
+          FileMetadataDestroy.new
+        end
+
+        ops.register 'delete' do
+          Steps::FileMetadataDelete.new
+        end
+      end
+
       namespace 'file_set' do |ops| # Hyrax::FileSet resource
         ops.register 'delete' do
           Steps::DeleteResource.new
+        end
+
+        ops.register 'delete_all_file_metadata' do
+          Steps::DeleteAllFileMetadata.new
         end
 
         ops.register 'destroy' do
@@ -145,9 +161,21 @@ module Hyrax
         ops.register 'remove_from_work' do
           Steps::RemoveFileSetFromWork.new
         end
+
+        ops.register 'delete_acl' do
+          Steps::DeleteAccessControl.new
+        end
+
+        ops.register 'save_acl' do
+          Steps::SaveAccessControl.new
+        end
       end
 
       namespace 'admin_set_resource' do |ops| # Hyrax::AdministrativeSet resource
+        ops.register 'check_default' do
+          Steps::CheckForDefaultAdminSet.new
+        end
+
         ops.register 'check_empty' do
           Steps::CheckForEmptyAdminSet.new
         end
@@ -175,6 +203,10 @@ module Hyrax
         ops.register 'save_acl' do
           Steps::SaveAccessControl.new
         end
+
+        ops.register 'delete_permission_template' do
+          Steps::DeletePermissionTemplate.new
+        end
       end
 
       namespace 'collection_resource' do |ops| # Hyrax::PcdmCollection resource
@@ -194,8 +226,16 @@ module Hyrax
           Steps::DeleteAccessControl.new
         end
 
+        ops.register 'remove_from_membership' do
+          Steps::RemoveFromMembership.new
+        end
+
         ops.register 'save_acl' do
           Steps::SaveAccessControl.new
+        end
+
+        ops.register 'delete_permission_template' do
+          Steps::DeletePermissionTemplate.new
         end
 
         ops.register 'save_collection_banner' do
@@ -216,12 +256,20 @@ module Hyrax
           Steps::AddToParent.new
         end
 
+        ops.register 'apply_permission_template' do
+          Steps::ApplyPermissionTemplate.new
+        end
+
         ops.register 'change_depositor' do
           Steps::ChangeDepositor.new
         end
 
         ops.register 'delete' do
           Steps::DeleteResource.new
+        end
+
+        ops.register 'delete_all_file_sets' do
+          Steps::DeleteAllFileSets.new
         end
 
         ops.register 'destroy' do
@@ -238,49 +286,6 @@ module Hyrax
 
         ops.register 'update_work_members' do
           Steps::UpdateWorkMembers.new
-        end
-      end
-
-      # legacy AF works processing by transactions is deprecated
-      namespace 'work' do |ops|
-        ops.register 'apply_collection_permission_template' do
-          Steps::ApplyCollectionPermissionTemplate.new
-        end
-
-        ops.register 'apply_permission_template' do
-          Steps::ApplyPermissionTemplate.new
-        end
-
-        ops.register 'apply_visibility' do
-          Steps::ApplyVisibility.new
-        end
-
-        ops.register 'destroy_work' do
-          Steps::DestroyWork.new
-        end
-
-        ops.register 'ensure_admin_set' do
-          Steps::EnsureAdminSet.new
-        end
-
-        ops.register 'ensure_permission_template' do
-          Steps::EnsurePermissionTemplate.new
-        end
-
-        ops.register 'save_work' do
-          Steps::SaveWork.new
-        end
-
-        ops.register 'set_default_admin_set' do
-          Steps::SetDefaultAdminSet.new
-        end
-
-        ops.register 'set_modified_date' do
-          Steps::SetModifiedDate.new
-        end
-
-        ops.register 'set_uploaded_date_unless_present' do
-          Steps::SetUploadedDateUnlessPresent.new
         end
       end
       # rubocop:enable Metrics/BlockLength

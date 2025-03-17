@@ -21,14 +21,17 @@ RSpec.describe 'hyrax/file_sets/_show_actions.html.erb', type: :view do
     Hyrax::WorkShowPresenter.new(solr_document, ability)
   end
   let(:page) { Capybara::Node::Simple.new(rendered) }
-  before { allow(controller).to receive(:current_ability).and_return(ability) }
+  before do
+    allow(controller).to receive(:current_ability).and_return(ability)
+    allow(controller).to receive(:controller_name).and_return('file_sets')
+  end
 
   describe 'citations' do
     before do
       Hyrax.config.citations = citations
       allow(ability).to receive(:can?).with(:edit, anything).and_return(false)
       assign(:presenter, presenter)
-      view.lookup_context.view_paths.push 'app/views/hyrax/base'
+      stub_template '_social_media.html.erb' => 'social_media'
       render
     end
 
@@ -54,7 +57,7 @@ RSpec.describe 'hyrax/file_sets/_show_actions.html.erb', type: :view do
       allow(ability).to receive(:can?).with(:edit, anything).and_return(true)
       allow(presenter).to receive(:editor?).and_return(true)
       assign(:presenter, presenter)
-      view.lookup_context.view_paths.push 'app/views/hyrax/base'
+      stub_template '_social_media.html.erb' => 'social_media'
       render
     end
 

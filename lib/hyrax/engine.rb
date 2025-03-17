@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 module Hyrax
-  class Engine < ::Rails::Engine
+  class Engine < ::Rails::Engine # rubocop:disable Metrics/ClassLength
     isolate_namespace Hyrax
 
     require 'almond-rails'
@@ -8,19 +8,19 @@ module Hyrax
     require 'breadcrumbs_on_rails'
     require 'clipboard/rails'
     require 'draper'
-    require 'dry/equalizer'
     require 'dry/events'
     require 'dry/struct'
     require 'dry/validation'
     require 'flipflop'
     require 'flot-rails'
     require 'hydra-file_characterization'
-    require 'jquery-datatables-rails'
-    require 'jquery-ui-rails'
     require 'legato'
+    require 'openseadragon'
     require 'qa'
     require 'tinymce-rails'
     require 'valkyrie'
+    require 'cancancan'
+    require 'blacklight'
 
     require 'hydra/derivatives'
     require 'hyrax/active_fedora_dummy_model'
@@ -60,16 +60,19 @@ module Hyrax
       # raises PG::ConnectionBad. There's no good common ancestor to assume. That's why this test
       # is in its own tiny chunk of code – so we know that whatever the StandardError is, it's coming
       # from the attempt to connect.
-      can_connect = begin
-        ActiveRecord::Base.connection
-        true
-                    rescue StandardError
-                      false
-      end
+      #
+      # (Some time later...) Simply accessing the connection obj is not raising PG::ConnectionBad,
+      # so let's call active? too.
+      can_connect =
+        begin
+          ActiveRecord::Base.connection.active?
+        rescue StandardError
+          false
+        end
 
       can_persist = can_connect && begin
         Hyrax.config.persist_registered_roles!
-        Rails.logger.info("Hyrax::Engine.after_initialize - persisting registered roles!")
+        Hyrax.logger.info("Hyrax::Engine.after_initialize - persisting registered roles!")
         true
                                    rescue ActiveRecord::StatementInvalid
                                      false
@@ -79,13 +82,20 @@ module Hyrax
         message = "Hyrax::Engine.after_initialize - unable to persist registered roles.\n"
         message += "It is expected during the application installation - during integration tests, rails install.\n"
         message += "It is UNEXPECTED if you are booting up a Hyrax powered application via `rails server'"
-        Rails.logger.info(message)
+        Hyrax.logger.info(message)
       end
+
+      # Force CatalogController to use our SearchState class, which has an important
+      # work-around for some highly suspect SPARQL-gem monkeypatching.
+      CatalogController.search_state_class = Hyrax::SearchState if CatalogController.try(:search_state_class) == Blacklight::SearchState
     end
 
     initializer 'requires' do
-      require 'power_converters'
-      require 'wings' unless Hyrax.config.disable_wings
+      ActiveSupport::Reloader.to_prepare do
+        require 'wings' unless Hyrax.config.disable_wings
+        require 'freyja' unless Hyrax.config.disable_freyja
+        require 'frigg' unless Hyrax.config.disable_frigg
+      end
     end
 
     initializer 'routing' do
@@ -105,6 +115,8 @@ module Hyrax
 
         ActiveFedora::Base.translate_uri_to_id = c.translate_uri_to_id
         ActiveFedora::Base.translate_id_to_uri = c.translate_id_to_uri
+        ActiveFedora::File.translate_uri_to_id = c.translate_uri_to_id
+        ActiveFedora::File.translate_id_to_uri = c.translate_id_to_uri
 
         ::Noid::Rails.config.template = c.noid_template
         ::Noid::Rails.config.minter_class = c.noid_minter_class

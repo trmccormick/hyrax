@@ -1,9 +1,12 @@
 # frozen_string_literal: true
+
+return if Hyrax.config.disable_wings
+
 require 'wings_helper'
 require 'wings/hydra/works/services/add_file_to_file_set'
 require 'wings/services/custom_queries/find_file_metadata'
 
-RSpec.describe Wings::CustomQueries::FindFileMetadata, :clean_repo do
+RSpec.describe Wings::CustomQueries::FindFileMetadata, :active_fedora, :clean_repo do
   subject(:query_handler) { described_class.new(query_service: query_service) }
   let(:query_service) { Hyrax.query_service }
   let(:af_file_id1) { 'file1' }
@@ -151,7 +154,7 @@ RSpec.describe Wings::CustomQueries::FindFileMetadata, :clean_repo do
 
     let(:original_file_use)  { Hyrax::FileMetadata::Use::ORIGINAL_FILE }
     let(:extracted_text_use) { Hyrax::FileMetadata::Use::EXTRACTED_TEXT }
-    let(:thumbnail_use)      { Hyrax::FileMetadata::Use::THUMBNAIL }
+    let(:thumbnail_use)      { Hyrax::FileMetadata::Use::THUMBNAIL_IMAGE }
 
     let(:pdf_filename)  { 'sample-file.pdf' }
     let(:pdf_mimetype)  { 'application/pdf' }
@@ -169,8 +172,8 @@ RSpec.describe Wings::CustomQueries::FindFileMetadata, :clean_repo do
       let!(:file_set) do
         file_set = af_file_set.valkyrie_resource
         file_set = Wings::Works::AddFileToFileSet.call(file_set: file_set, file: pdf_file, type: original_file_use)
-        file_set = Wings::Works::AddFileToFileSet.call(file_set: file_set, file: text_file, type: extracted_text_use)
-        Wings::Works::AddFileToFileSet.call(file_set: file_set, file: image_file, type: thumbnail_use)
+        file_set = Wings::Works::AddFileToFileSet.call(file_set: file_set, file: image_file, type: thumbnail_use)
+        Wings::Works::AddFileToFileSet.call(file_set: file_set, file: text_file, type: extracted_text_use)
       end
 
       context 'and use_valkyrie is false' do
@@ -187,7 +190,7 @@ RSpec.describe Wings::CustomQueries::FindFileMetadata, :clean_repo do
           result = query_handler.find_many_file_metadata_by_use(resource: file_set, use: extracted_text_use, use_valkyrie: true)
           expect(result.size).to eq 1
           expect(result.first).to be_a Hyrax::FileMetadata
-          expect(result.first.type).to include extracted_text_use
+          expect(result.first.pcdm_use).to include extracted_text_use
         end
       end
     end

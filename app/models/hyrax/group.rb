@@ -1,30 +1,20 @@
 # frozen_string_literal: true
-module Hyrax
-  class Group
-    DEFAULT_NAME_PREFIX = 'group/'
 
-    def self.name_prefix
-      DEFAULT_NAME_PREFIX
-    end
+module Hyrax
+  ##
+  # A Plain Old Ruby Object (PORO) representing a named group.
+  #
+  # In Hyku, we replace the PORO with an Application Record.  But there is significant duplication
+  # of logic.
+  #
+  # @see Hyrax::GroupBehavior
+  class Group
+    include Hyrax::GroupBehavior
 
     def initialize(name)
       @name = name
     end
 
     attr_reader :name
-
-    def to_sipity_agent
-      sipity_agent || create_sipity_agent!
-    end
-
-    private
-
-    def sipity_agent
-      Sipity::Agent.find_by(proxy_for_id: name, proxy_for_type: self.class.name)
-    end
-
-    def create_sipity_agent!
-      Sipity::Agent.create!(proxy_for_id: name, proxy_for_type: self.class.name)
-    end
   end
 end

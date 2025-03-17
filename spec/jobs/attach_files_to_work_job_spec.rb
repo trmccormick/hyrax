@@ -1,5 +1,5 @@
 # frozen_string_literal: true
-RSpec.describe AttachFilesToWorkJob, perform_enqueued: [AttachFilesToWorkJob] do
+RSpec.describe AttachFilesToWorkJob, :active_fedora, perform_enqueued: [AttachFilesToWorkJob] do
   let(:file1) { File.open(fixture_path + '/world.png') }
   let(:file2) { File.open(fixture_path + '/image.jp2') }
   let(:uploaded_file1) { build(:uploaded_file, file: file1) }
@@ -93,7 +93,7 @@ RSpec.describe AttachFilesToWorkJob, perform_enqueued: [AttachFilesToWorkJob] do
 
       it "overrides the work's visibility", perform_enqueued: [described_class, IngestJob] do
         expect(CharacterizeJob).to receive(:perform_later).twice
-        described_class.perform_now(generic_work, [uploaded_file1, uploaded_file2], attributes)
+        described_class.perform_now(generic_work, [uploaded_file1, uploaded_file2], **attributes)
         generic_work.reload
         expect(generic_work.file_sets.count).to eq 2
         expect(generic_work.file_sets.find { |fs| fs.label == uploaded_file1.file.filename }.visibility).to eq 'open'
@@ -110,7 +110,6 @@ RSpec.describe AttachFilesToWorkJob, perform_enqueued: [AttachFilesToWorkJob] do
     shared_examples 'a file attacher', perform_enqueued: [described_class, IngestJob] do
       it 'attaches files, copies visibility and permissions and updates the uploaded files' do
         id = generic_work.id
-        expect(ValkyrieIngestJob).to receive(:perform_later).twice
         described_class.perform_now(generic_work, [uploaded_file1, uploaded_file2])
         generic_work = Hyrax.query_service.find_by(id: id)
         file_sets = Hyrax.custom_queries.find_child_file_sets(resource: generic_work)
@@ -118,6 +117,7 @@ RSpec.describe AttachFilesToWorkJob, perform_enqueued: [AttachFilesToWorkJob] do
         expect(file_sets.map(&:visibility)).to all(eq 'open')
         expect(uploaded_file1.reload.file_set_uri).not_to be_nil
         expect(ImportUrlJob).not_to have_been_enqueued
+        expect(ValkyrieIngestJob).to have_been_enqueued.twice
       end
     end
 

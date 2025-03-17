@@ -2,71 +2,44 @@
 require 'spec_helper'
 require 'hyrax/transactions'
 
-RSpec.describe Hyrax::Transactions::Steps::ApplyPermissionTemplate do
+RSpec.describe Hyrax::Transactions::Steps::ApplyPermissionTemplate, valkyrie_adapter: :test_adapter do
   subject(:step) { described_class.new }
-  let(:work)     { build(:generic_work) }
 
-  context 'without an admin_set' do
-    it 'is a failure' do
-      expect(step.call(work)).to be_failure
+  context 'when there is no admin set' do
+    let(:work) { FactoryBot.valkyrie_create(:hyrax_work) }
+
+    it 'gives success and does nothing' do
+      expect(step.call(work)).to be_success
     end
   end
 
-  context 'with an admin_set' do
-    let(:work)      { build(:generic_work, admin_set: admin_set) }
-    let(:admin_set) { create(:admin_set, with_permission_template: true) }
+  context 'with default admin set' do
+    let(:work) { FactoryBot.valkyrie_create(:hyrax_work, :with_default_admin_set) }
 
-    it 'is a success' do
+    it 'gives success' do
       expect(step.call(work)).to be_success
     end
+  end
 
-    context 'with users and groups' do
-      let(:admin_set)     { AdminSet.find(template.source_id) }
-      let(:manage_groups) { ['edit_group_1', 'edit_group_2'] }
-      let(:manage_users)  { create_list(:user, 2) }
-      let(:view_groups)   { ['read_group_1', 'read_group_2'] }
-      let(:view_users)    { create_list(:user, 2) }
+  context 'when admin set is missing permission template' do
+    let(:work) { FactoryBot.valkyrie_create(:hyrax_work, :with_admin_set) }
 
-      let(:template) do
-        create(:permission_template,
-               with_admin_set: true,
-               manage_groups: manage_groups,
-               manage_users: manage_users,
-               view_groups: view_groups,
-               view_users: view_users)
-      end
+    it 'gives success' do
+      expect(step.call(work)).to be_success
+    end
+  end
 
-      it 'assigns edit users from template' do
-        expect { step.call(work) }
-          .to change { work.edit_users }
-          .to include(*manage_users.map(&:user_key))
-      end
+  context 'when the admin set has a grants in a permission template' do
+    let(:admin_set_user) { FactoryBot.create(:user) }
+    let(:work) { FactoryBot.valkyrie_create(:hyrax_work, :with_admin_set, admin_set: admin_set) }
 
-      it 'assigns edit groups from template' do
-        expect { step.call(work) }
-          .to change { work.edit_groups }
-          .to include(*manage_groups)
-      end
-
-      it 'assigns read users from template' do
-        expect { step.call(work) }
-          .to change { work.read_users }
-          .to include(*view_users.map(&:user_key))
-      end
-
-      it 'assigns read groups from template' do
-        expect { step.call(work) }
-          .to change { work.read_groups }
-          .to include(*view_groups)
-      end
+    let(:admin_set) do
+      FactoryBot.valkyrie_create(:hyrax_admin_set, :with_permission_template, user: admin_set_user)
     end
 
-    context 'missing PermissionTemplate' do
-      let(:admin_set) { create(:admin_set, with_permission_template: false) }
-
-      it 'is a failure' do
-        expect(step.call(work)).to be_failure
-      end
+    it 'grants edit access to manager' do
+      expect(step.call(work).value!.edit_users.to_a)
+        .to include admin_set_user.user_key
     end
   end
 end

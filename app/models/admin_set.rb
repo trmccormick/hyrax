@@ -17,6 +17,7 @@
 # @see Hyrax::DefaultAdminSetActor
 # @see Hyrax::ApplyPermissionTemplateActor
 class AdminSet < ActiveFedora::Base
+  include Hydra::PCDM::CollectionBehavior
   include Hydra::AccessControls::Permissions
   include Hyrax::Noid
   include Hyrax::HumanReadableType
@@ -28,7 +29,26 @@ class AdminSet < ActiveFedora::Base
   DEFAULT_WORKFLOW_NAME = Hyrax.config.default_active_workflow_name
 
   validates_with Hyrax::HasOneTitleValidator
+
+  ##
+  # @!group Class Attributes
+  #
+  # @!attribute internal_resource
+  #   @return [String]
+  class_attribute :internal_resource, default: "AdminSet"
+
   class_attribute :human_readable_short_description
+  # @!endgroup Class Attributes
+  ##
+
+  def self.to_rdf_representation
+    internal_resource
+  end
+
+  def to_rdf_representation
+    internal_resource
+  end
+
   self.indexer = Hyrax::AdminSetIndexer
 
   property :title,             predicate: ::RDF::Vocab::DC.title
@@ -39,27 +59,8 @@ class AdminSet < ActiveFedora::Base
            predicate: Hyrax.config.admin_set_predicate,
            class_name: 'ActiveFedora::Base'
 
-  before_destroy :check_if_not_default_set, :check_if_empty
+  before_destroy :check_if_not_default_set, :check_if_empty, prepend: true
   after_destroy :destroy_permission_template
-
-  def self.default_set?(id)
-    Deprecation.warn("'##{__method__}' will be removed in Hyrax 4.0.  " \
-                     "Instead, use 'Hyrax::AdminSetCreateService.default_admin_set?(id:)'.")
-    Hyrax::AdminSetCreateService.default_admin_set?(id: id)
-  end
-
-  def default_set?
-    Deprecation.warn("'##{__method__}' will be removed in Hyrax 4.0.  " \
-                     "Instead, use 'Hyrax::AdminSetCreateService.default_admin_set?(id:)'.")
-    self.class.default_set?(id)
-  end
-
-  # Creates the default AdminSet and an associated PermissionTemplate with workflow
-  def self.find_or_create_default_admin_set_id
-    Deprecation.warn("'##{__method__}' will be removed in Hyrax 4.0.  " \
-                     "Instead, use 'Hyrax::AdminSetCreateService.find_or_create_default_admin_set.id'.")
-    Hyrax::AdminSetCreateService.find_or_create_default_admin_set.id.to_s
-  end
 
   def collection_type_gid
     # allow AdminSet to behave more like a regular Collection
@@ -86,15 +87,12 @@ class AdminSet < ActiveFedora::Base
     Sipity::Workflow.find_active_workflow_for(admin_set_id: id)
   end
 
-  ##
-  # @deprecated use PermissionTemplate#reset_access_controls_for instead
+  # @api public
   #
-  # Calculate and update who should have edit access based on who
-  # has "manage" access in the PermissionTemplateAccess
-  def reset_access_controls!
-    Deprecation.warn("reset_access_controls! is deprecated; use PermissionTemplate#reset_access_controls_for instead.")
-
-    permission_template.reset_access_controls_for(collection: self)
+  # return an id for the AdminSet.
+  # defaults to calling Hyrax::Noid, but needs a fall back if noid is off
+  def assign_id
+    super || SecureRandom.uuid
   end
 
   private
@@ -107,13 +105,13 @@ class AdminSet < ActiveFedora::Base
 
   def check_if_empty
     return true if members.empty?
-    errors[:base] << I18n.t('hyrax.admin.admin_sets.delete.error_not_empty')
+    errors.add(:base, I18n.t('hyrax.admin.admin_sets.delete.error_not_empty'))
     throw :abort
   end
 
   def check_if_not_default_set
-    return true unless default_set?
-    errors[:base] << I18n.t('hyrax.admin.admin_sets.delete.error_default_set')
+    return true unless Hyrax::AdminSetCreateService.default_admin_set?(id: id)
+    errors.add(:base, I18n.t('hyrax.admin.admin_sets.delete.error_default_set'))
     throw :abort
   end
 end

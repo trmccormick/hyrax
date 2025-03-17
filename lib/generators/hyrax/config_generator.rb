@@ -38,18 +38,25 @@ class Hyrax::ConfigGenerator < Rails::Generators::Base
     copy_file 'config/initializers/redis_config.rb'
   end
 
+  def configure_valkyrie
+    copy_file 'config/initializers/1_valkyrie.rb'
+  end
+
   def configure_valkyrie_index
     copy_file 'config/valkyrie_index.yml'
     copy_file 'config/solr_wrapper_valkyrie_test.yml'
   end
 
-  def create_initializer_config_file
-    copy_file 'config/initializers/hyrax.rb'
+  def metadata_dir
+    empty_directory 'config/metadata'
   end
 
-  # Add mini-magick configuration
-  def minimagick_config
-    copy_file 'config/initializers/mini_magick.rb'
+  def derivatives_file_services
+    copy_file 'config/initializers/file_services.rb'
+  end
+
+  def create_initializer_config_file
+    copy_file 'config/initializers/hyrax.rb'
   end
 
   def tinymce_config

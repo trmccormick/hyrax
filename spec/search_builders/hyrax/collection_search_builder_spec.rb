@@ -11,8 +11,7 @@ RSpec.describe Hyrax::CollectionSearchBuilder do
 
   describe '#models' do
     its(:models) do
-      is_expected
-        .to contain_exactly(*[::Collection, Hyrax.config.collection_class].uniq)
+      is_expected.to match_array(Hyrax::ModelRegistry.collection_classes)
     end
 
     context 'when collection class is not ::Collection' do
@@ -49,25 +48,48 @@ RSpec.describe Hyrax::CollectionSearchBuilder do
 
     context 'when access is :deposit' do
       let(:access) { "deposit" }
-      let!(:collection) { FactoryBot.create(:collection_lw, with_permission_template: attributes) }
+      let(:access_grant) do
+        { agent_type:,
+          agent_id: user.user_key,
+          access: Hyrax::PermissionTemplateAccess::DEPOSIT}
+      end
+      let!(:collection) do
+        valkyrie_create(:hyrax_collection, user: user, access_grants: [access_grant])
+      end
 
       context 'and user has access' do
-        let(:attributes) { { deposit_users: [user.user_key] } }
+        let(:agent_type) { Hyrax::PermissionTemplateAccess::USER }
 
         it { is_expected.to eq ["{!terms f=id}#{collection.id}"] }
       end
 
       context 'and group has access' do
-        let(:attributes) { { deposit_groups: ['registered'] } }
+        let(:agent_type) { Hyrax::PermissionTemplateAccess::GROUP }
 
         it { is_expected.to eq ["{!terms f=id}#{collection.id}"] }
       end
 
       context "and user has no access" do
-        let(:attributes) { true }
+        let(:collection) do
+          valkyrie_create(:hyrax_collection, :with_permission_template)
+        end
 
         it { is_expected.to eq ["{!terms f=id}"] }
       end
+    end
+  end
+
+  describe '#add_sorting_to_solr' do
+    let(:builder_2) { described_class.new(scope).with(blacklight_params) }
+    let(:blacklight_params) do
+      { "sort" => "system_create_dtsi desc", "per_page" => "50", "locale" => "en" }
+    end
+    let(:solr_parameters) { {} }
+
+    before { builder_2.add_sorting_to_solr(solr_parameters) }
+
+    it 'sets the solr paramters for sorting correctly' do
+      expect(solr_parameters[:sort]).to eq('system_create_dtsi desc')
     end
   end
 end

@@ -28,7 +28,7 @@ module Hyrax
                                       'json.nl': 'map',
                                       omitHeader: 'true')
         unless json
-          Rails.logger.error "Unable to reach TermsComponent via Solr connection. Is it enabled in your solr config?"
+          Hyrax.logger.error "Unable to reach TermsComponent via Solr connection. Is it enabled in your solr config?"
           return []
         end
 
@@ -59,7 +59,7 @@ module Hyrax
         end
 
         # Allows us to create a Flot charts pie-graph
-        def as_json(opts)
+        def as_json(opts = nil)
           @data.as_json(opts)
         end
       end

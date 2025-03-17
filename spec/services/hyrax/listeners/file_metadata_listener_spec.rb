@@ -20,8 +20,8 @@ RSpec.describe Hyrax::Listeners::FileMetadataListener, valkyrie_adapter: :test_a
     it 'indexes the file_set' do
       expect { listener.on_file_metadata_updated(event) }
         .to change { fake_adapter.saved_resources }
-        .from(be_empty)
-        .to contain_exactly(file_set)
+        .from(contain_exactly(file_set)) # Saving the ACL triggers an index
+        .to(contain_exactly(file_set, file_set))
     end
 
     context 'when the file is not in a file set' do
@@ -47,13 +47,13 @@ RSpec.describe Hyrax::Listeners::FileMetadataListener, valkyrie_adapter: :test_a
       let(:metadata) do
         FactoryBot.valkyrie_create(:hyrax_file_metadata,
                                    file_set_id: file_set.id,
-                                   type: Hyrax::FileMetadata::Use::THUMBNAIL)
+                                   pcdm_use: Hyrax::FileMetadata::Use::THUMBNAIL_IMAGE)
       end
 
       it 'does not index the file_set' do
         expect { listener.on_file_metadata_updated(event) }
           .not_to change { fake_adapter.saved_resources }
-          .from(be_empty)
+          .from(contain_exactly(file_set)) # Saving the ACL triggers an index
       end
     end
   end

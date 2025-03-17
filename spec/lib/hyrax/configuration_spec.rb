@@ -24,6 +24,10 @@ RSpec.describe Hyrax::Configuration do
   it { is_expected.to respond_to(:admin_set_model=) }
   it { is_expected.to respond_to(:admin_set_predicate) }
   it { is_expected.to respond_to(:admin_set_predicate=) }
+  it { is_expected.to respond_to(:administrative_set_form) }
+  it { is_expected.to respond_to(:administrative_set_form=) }
+  it { is_expected.to respond_to(:administrative_set_indexer) }
+  it { is_expected.to respond_to(:administrative_set_indexer=) }
   it { is_expected.to respond_to(:analytic_start_date) }
   it { is_expected.to respond_to(:analytics?) }
   it { is_expected.to respond_to(:analytics_provider) }
@@ -41,7 +45,8 @@ RSpec.describe Hyrax::Configuration do
   it { is_expected.to respond_to(:collection_model=) }
   it { is_expected.to respond_to(:contact_email) }
   it { is_expected.to respond_to(:default_admin_set_id) }
-  it { is_expected.to respond_to(:default_nested_relationship_reindexer) }
+  it { is_expected.to respond_to(:derivative_services) }
+  it { is_expected.to respond_to(:derivative_services=) }
   it { is_expected.to respond_to(:display_media_download_link=) }
   it { is_expected.to respond_to(:display_media_download_link?) }
   it { is_expected.to respond_to(:display_microdata?) }
@@ -50,8 +55,12 @@ RSpec.describe Hyrax::Configuration do
   it { is_expected.to respond_to(:enable_noids?) }
   it { is_expected.to respond_to(:extract_full_text?) }
   it { is_expected.to respond_to(:feature_config_path) }
-  it { is_expected.to respond_to(:google_analytics_id) }
-  it { is_expected.to respond_to(:google_analytics_id?) }
+  it { is_expected.to respond_to(:file_set_form) }
+  it { is_expected.to respond_to(:file_set_form=) }
+  it { is_expected.to respond_to(:file_set_file_service) }
+  it { is_expected.to respond_to(:file_set_file_service=) }
+  it { is_expected.to respond_to(:file_set_indexer) }
+  it { is_expected.to respond_to(:file_set_indexer=) }
   it { is_expected.to respond_to(:identifier_registrars) }
   it { is_expected.to respond_to(:iiif_image_compliance_level_uri) }
   it { is_expected.to respond_to(:iiif_image_compliance_level_uri=) }
@@ -70,11 +79,20 @@ RSpec.describe Hyrax::Configuration do
   it { is_expected.to respond_to(:libreoffice_path) }
   it { is_expected.to respond_to(:license_service_class) }
   it { is_expected.to respond_to(:license_service_class=) }
+  it { is_expected.to respond_to(:logger) }
+  it { is_expected.to respond_to(:logger=) }
   it { is_expected.to respond_to(:max_days_between_fixity_checks) }
   it { is_expected.to respond_to(:max_days_between_fixity_checks=) }
   it { is_expected.to respond_to(:max_notifications_for_dashboard) }
-  it { is_expected.to respond_to(:nested_relationship_reindexer) }
   it { is_expected.to respond_to(:owner_permission_levels) }
+  it { is_expected.to respond_to(:pcdm_collection_form) }
+  it { is_expected.to respond_to(:pcdm_collection_form=) }
+  it { is_expected.to respond_to(:pcdm_collection_indexer) }
+  it { is_expected.to respond_to(:pcdm_collection_indexer=) }
+  it { is_expected.to respond_to(:pcdm_object_form_builder) }
+  it { is_expected.to respond_to(:pcdm_object_form_builder=) }
+  it { is_expected.to respond_to(:pcdm_object_indexer_builder) }
+  it { is_expected.to respond_to(:pcdm_object_indexer_builder=) }
   it { is_expected.to respond_to(:permission_levels) }
   it { is_expected.to respond_to(:permission_options) }
   it { is_expected.to respond_to(:persistent_hostpath) }
@@ -90,11 +108,14 @@ RSpec.describe Hyrax::Configuration do
   it { is_expected.to respond_to(:translate_id_to_uri) }
   it { is_expected.to respond_to(:translate_uri_to_id) }
   it { is_expected.to respond_to(:upload_path) }
+  it { is_expected.to respond_to(:use_valkyrie?) }
+  it { is_expected.to respond_to(:use_valkyrie=) }
   it { is_expected.to respond_to(:registered_ingest_dirs) }
   it { is_expected.to respond_to(:registered_ingest_dirs=) }
   it { is_expected.to respond_to(:range_for_number_of_results_to_display_per_page) }
   it { is_expected.to respond_to(:range_for_number_of_results_to_display_per_page=) }
   it { is_expected.to respond_to(:work_requires_files?) }
+  it { is_expected.to respond_to(:simple_schema_loader_config_search_paths) }
 
   describe "#registered_ingest_dirs" do
     it "provides the Rails tmp directory for temporary downloads for cloud files" do

@@ -1,9 +1,12 @@
 # frozen_string_literal: true
+
+return if Hyrax.config.disable_wings
+
 require 'wings_helper'
 require 'valkyrie/specs/shared_specs'
 require 'wings'
 
-RSpec.describe Wings::Valkyrie::Persister do
+RSpec.describe Wings::Valkyrie::Persister, :active_fedora do
   subject(:persister) { described_class.new(adapter: adapter) }
   let(:adapter) { Wings::Valkyrie::MetadataAdapter.new }
   let(:query_service) { adapter.query_service }
@@ -147,8 +150,8 @@ RSpec.describe Wings::Valkyrie::Persister do
         .to raise_error described_class::FailedSaveError
     end
 
-    context 'and it corresponds to a File' do
-      let(:resource) { Hyrax::FileMetadata.new(id: file.id, file_identifier: file.id) }
+    context 'and it corresponds to a ActiveFedora File' do
+      let(:resource) { Hyrax::FileMetadata.new(id: file.id) }
       let(:file) do
         Hydra::PCDM::File.new.tap do |f|
           f.content = "moomin\n"
@@ -172,6 +175,49 @@ RSpec.describe Wings::Valkyrie::Persister do
         persister.save(resource: resource)
         file.reload
         expect(file.content).to eq("moomin\n")
+      end
+    end
+
+    context "and it is metadata about a non-AF file" do
+      let(:file_set) { FactoryBot.valkyrie_create(:hyrax_file_set) }
+      let(:io) { Tempfile.new('moomin-deriviative') }
+      let(:resource) { Hyrax::FileMetadata.new(file_identifier: file.id) }
+      let(:storage_adapter) { Valkyrie::StorageAdapter.find(:derivatives_disk) }
+
+      let(:file) do
+        storage_adapter.upload(file: io, original_filename: 'moomin.txt', resource: file_set)
+      end
+
+      it "can save a resource" do
+        expect(persister.save(resource: resource)).to be_persisted
+      end
+
+      it "can save a resource repeatedly" do
+        saved = persister.save(resource: resource)
+        expect(persister.save(resource: saved)).to be_persisted
+      end
+
+      it "recalls the file id" do
+        expect(persister.save(resource: resource))
+          .to have_attributes(file_identifier: file.id)
+      end
+
+      it "uses OriginalFile as type by default" do
+        expect(persister.save(resource: resource))
+          .to have_attributes(pcdm_use: contain_exactly(RDF::URI("http://pcdm.org/use#OriginalFile")))
+      end
+
+      it "saves file metadata attributes" do
+        resource.file_set_id = file_set.id
+        resource.label = 'Comet in Moominland'
+        resource.mime_type = 'application/moomin'
+        resource.width = 7
+
+        expect(persister.save(resource: resource))
+          .to have_attributes(file_set_id: file_set.id,
+                              label: contain_exactly('Comet in Moominland'),
+                              mime_type: 'application/moomin',
+                              width: contain_exactly(7))
       end
     end
   end
@@ -468,7 +514,7 @@ RSpec.describe Wings::Valkyrie::Persister do
       end
 
       after do
-        ActiveSupport::Dependencies.remove_constant("MyLockingResource")
+        Object.send(:remove_const, "MyLockingResource")
       end
 
       describe "#save" do

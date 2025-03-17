@@ -1,6 +1,9 @@
 # frozen_string_literal: true
-# Hack for https://github.com/rails/rails/issues/35153
-gsub_file 'Gemfile', /^gem ["']sqlite3["']$/, 'gem "sqlite3", "~> 1.3.0"'
-gem 'hyrax', '3.4.1'
+
+insert_into_file 'config/application.rb', after: /config\.load_defaults [0-9.]+$/ do
+  "\n    config.add_autoload_paths_to_load_path = true"
+end
+
+gem 'hyrax', '5.1.0-beta1'
 run 'bundle install'
 generate 'hyrax:install', '-f'

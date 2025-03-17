@@ -10,7 +10,6 @@ module Hyrax
     include Hydra::WithDepositor
     include HasRepresentative
     include HasRendering
-    include WithFileSets
     include Naming
     include CoreMetadata
     include InAdminSet
@@ -21,7 +20,6 @@ module Hyrax
     include ProxyDeposit
     include Works::Metadata
     include WithEvents
-    include Hyrax::CollectionNesting
 
     included do
       property :owner, predicate: RDF::URI.new('http://opaquenamespace.org/ns/hydra/owner'), multiple: false
@@ -30,6 +28,10 @@ module Hyrax
       self.indexer = WorkIndexer
       # Default VirusScanner, configurable for Hyrax work types
       self.default_system_virus_scanner = Hyrax::VirusScanner
+    end
+
+    def to_rdf_representation
+      self.class.to_rdf_representation
     end
 
     module ClassMethods

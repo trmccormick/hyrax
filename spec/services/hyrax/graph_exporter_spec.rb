@@ -1,5 +1,7 @@
 # frozen_string_literal: true
-RSpec.describe Hyrax::GraphExporter do
+
+# NOTE: This service focuses solely on interacting with ActiveFedora methods and connections.
+RSpec.describe Hyrax::GraphExporter, :active_fedora do
   subject(:service) { described_class.new(document, hostname: 'localhost') }
   let(:work) { FactoryBot.create(:work_with_one_file, visibility: 'open') }
   let(:document) { double(id: work.id) }
@@ -39,7 +41,7 @@ RSpec.describe Hyrax::GraphExporter do
 
       it 'includes each nested resources once' do
         resource_fragments = work.created.map { |ts| ts.rdf_subject.fragment }
-        time_spans = service.fetch.query(predicate: RDF.type, object: RDF::Vocab::EDM.TimeSpan).subjects
+        time_spans = service.fetch.query({ predicate: RDF.type, object: RDF::Vocab::EDM.TimeSpan }).subjects
 
         expect(time_spans.map(&:fragment)).to contain_exactly(*resource_fragments)
       end

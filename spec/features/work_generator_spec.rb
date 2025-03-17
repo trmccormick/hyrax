@@ -13,11 +13,11 @@ RSpec.describe 'Creating a new Work' do
     load Rails.root.join('app', 'forms', 'hyrax', 'catapult_form.rb')
     load Rails.root.join('config', 'initializers', 'hyrax.rb')
     load Rails.root.join('config', 'routes.rb')
-    load "app/helpers/hyrax/url_helper.rb"
   end
 
   after do
     Rails::Generators.invoke('hyrax:work', ['Catapult', '--quiet'], behavior: :revoke, destination_root: Rails.root)
+    Hyrax::ModelRegistry.instance_variable_set(:@work_class_names, nil) # Catapult gets memoized here
   end
 
   it 'catapults should behave like generic works' do

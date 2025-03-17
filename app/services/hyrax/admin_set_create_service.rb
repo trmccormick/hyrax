@@ -10,7 +10,7 @@ module Hyrax
   # @see Hyrax::PermissionTemplate
   # @see Sipity::Workflow
   class AdminSetCreateService # rubocop:disable Metrics/ClassLength
-    DEFAULT_ID = 'admin_set/default'
+    DEFAULT_ID = 'admin_set_default'
     DEFAULT_TITLE = ['Default Admin Set'].freeze
 
     class_attribute :permissions_create_service, :default_admin_set_persister
@@ -18,23 +18,6 @@ module Hyrax
     self.default_admin_set_persister = Hyrax::DefaultAdministrativeSet
 
     class << self
-      # @api public
-      # Creates the default Hyrax::AdministrativeSet and corresponding data
-      # @param admin_set_id [String] The default admin set ID
-      # @param title [Array<String>] The title of the default admin set
-      # @return [TrueClass]
-      # @see Hyrax::AdministrativeSet
-      # @deprecated
-      # TODO: When this deprecated method is removed, update private method
-      #       .create_default_admin_set! to remove the parameters.
-      def create_default_admin_set(admin_set_id: DEFAULT_ID, title: DEFAULT_TITLE)
-        Deprecation.warn("'##{__method__}' will be removed in Hyrax 4.0.  " \
-                         "Instead, use 'Hyrax::AdminSetCreateService.find_or_create_default_admin_set'.")
-        create_default_admin_set!(admin_set_id: admin_set_id, title: title).present?
-      rescue RuntimeError => _err
-        false
-      end
-
       # @api public
       # Finds the default AdministrativeSet if it exists; otherwise, creates it and corresponding data
       # @return [Hyrax::AdministrativeSet] The default admin set.
@@ -101,12 +84,16 @@ module Hyrax
       # Create an instance of `Hyrax::AdministrativeSet` with the suggested_id if supported.
       # @return [Hyrax::AdministrativeSet] the new admin set
       def create_admin_set(suggested_id:, title:)
-        if suggested_id.blank? || Hyrax.config.disable_wings || !Hyrax.metadata_adapter.is_a?(Wings::Valkyrie::MetadataAdapter)
+        # Leverage the configured admin class, if it is a Valkyrie resource, otherwise fallback.
+        # Until we have fully moved to Valkyrie, we will need this logic.  Once past, we can
+        # use `Hyrax.config.admin_set_class`
+        klass = Hyrax.config.admin_set_class < Valkyrie::Resource ? Hyrax.config.admin_set_class : Hyrax::AdministrativeSet
+        if suggested_id.blank? || Hyrax.config.disable_wings
           # allow persister to assign id
-          Hyrax::AdministrativeSet.new(title: Array.wrap(title))
+          klass.new(title: Array.wrap(title))
         else
           # use suggested_id
-          Hyrax::AdministrativeSet.new(id: suggested_id, title: Array.wrap(title))
+          klass.new(id: suggested_id, title: Array.wrap(title))
         end
       end
 
@@ -137,11 +124,22 @@ module Hyrax
       #       do not support hardcoded IDs (e.g. postgres)
       # @return [Hyrax::AdministrativeSet] the default admin set; nil if not found
       def find_unsaved_default_admin_set
-        admin_set = Hyrax.query_service.find_by(id: DEFAULT_ID)
-        default_admin_set_persister.update(default_admin_set_id: DEFAULT_ID) if save_default?
+        admin_set = begin
+                      # to support repositories still using the deprecated 'admin_set/default' as DEFAULT_ID
+                      Hyrax.query_service.find_by(id: 'admin_set/default')
+                    rescue Ldp::BadRequest, Valkyrie::Persistence::ObjectNotFoundError
+                      # Fedora 6.5+ does not support slashes in IDs, hence the need to rescue Ldp::BadRequest
+                      # if an admin set with deprecated ID 'admin_set/default' does not exist, check again for admin set with DEFAULT_ID
+                      begin
+                        Hyrax.query_service.find_by(id: DEFAULT_ID)
+                      rescue Valkyrie::Persistence::ObjectNotFoundError
+                        nil
+                      end
+                    end
+
+        default_admin_set_persister.update(default_admin_set_id: admin_set.id.to_s) if admin_set.present? && save_default?
+
         admin_set
-      rescue Valkyrie::Persistence::ObjectNotFoundError
-        # a default admin set hasn't been created yet
       end
 
       # @return [String | nil] the default admin set id; returns nil if not set
@@ -242,10 +240,10 @@ module Hyrax
 
     def workflow_agents
       [
-        Hyrax::Group.new(admin_group_name)
+        Sipity::Agent(Hyrax::Group.new(admin_group_name))
       ].tap do |agent_list|
         # The default admin set does not have a creating user
-        agent_list << creating_user if creating_user
+        agent_list << Sipity::Agent(creating_user) if creating_user
       end
     end
 

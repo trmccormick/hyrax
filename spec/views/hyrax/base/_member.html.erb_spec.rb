@@ -23,8 +23,7 @@ RSpec.describe 'hyrax/base/_member.html.erb' do
     assign(:parent_presenter, parent_presenter)
     allow(presenter).to receive(:parent_presenter).and_return parent_presenter
     allow(presenter).to receive(:parent).and_return parent_presenter
-    allow(view).to receive(:current_search_session).and_return nil
-    allow(view).to receive(:search_session).and_return({})
+    allow(view).to receive(:session_tracking_params).and_return({})
     # abilities called in _actions.html.erb
     allow(view).to receive(:can?).with(:download, kind_of(String)).and_return(true)
     allow(view).to receive(:can?).with(:edit, kind_of(String)).and_return(true)
@@ -32,7 +31,7 @@ RSpec.describe 'hyrax/base/_member.html.erb' do
     allow(view).to receive(:contextual_path).with(anything, anything) do |x, y|
       Hyrax::ContextualPath.new(x, y).show
     end
-    render 'hyrax/base/member.html.erb', member: presenter
+    render 'hyrax/base/member', member: presenter
   end
 
   it 'checks the :download ability' do

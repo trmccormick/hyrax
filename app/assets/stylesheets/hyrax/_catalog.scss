@@ -10,60 +10,26 @@
   }
 }
 
-.document {
-  .list-thumbnail {
-    width: 30%;
-    float: left;
-  }
-
-  .metadata {
-    width: 70%;
-    display: inline-block;
-  }
-}
-
-// Styles added to help with newly implemented
-// Bootstrap row / column setup for search results
 .search-result-wrapper {
-  border-bottom: 1px dashed #ccc;
-  margin-bottom: 30px;
-  padding-bottom: 0;
-
-  .search-results-title-row {
-    align-items: center;
-    display: flex;
-    padding: 0 0 15px;
-
-    .search-result-title {
-      display: inline-block;
-      margin: 0 15px;
-      font-size: 18px;
-    }
-
-    @media (max-width: 768px) {
-      display: block;
-
-      > .search-result-title {
-        display: block;
-        padding-bottom: 5px;
-      }
-
-      .label {
-        margin-left: 15px;
-      }
-    }
-  }
-
   .list-thumbnail {
-    float: none;
+    display: flex;
+    justify-content: center;
     padding-bottom: 20px;
-    width: 100%;
 
     @media (max-width: 768px) {
       img {
         max-height: 200px;
       }
+    }
+  }
 
+  .search-results-title-row {
+    .badge {
+      margin-bottom: 6px;
+    }
+
+    .search-result-title {
+      margin-right: 16px;
     }
   }
 
@@ -76,10 +42,12 @@
   }
 
   .collection-counts-wrapper {
-    text-align: right;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
 
     @media (max-width: 992px) {
-      text-align: left;
+      justify-content: flex-start;
     }
 
     .collection-counts-item {
@@ -112,4 +80,35 @@
       padding-bottom: 10px;
     }
   }
+}
+
+.badge {
+  color: #fff;
+}
+
+.dark-text {
+  color: #000
+}
+
+.view-type-group a {
+  > span.caption {
+    display: none;
+  }
+}
+
+.search-widgets {
+  .view-type {
+    display: inline-block;
+  }
+}
+
+@media (max-width: 1199px) {
+  .sort-pagination {
+    display: block !important;
+  }
+}
+
+#search-results .search-result-wrapper .metadata a,
+#documents .document-metadata a {
+  word-break: break-all;
 }

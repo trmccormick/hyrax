@@ -49,11 +49,11 @@ RSpec.describe 'Creating a new Work', :js, :workflow, :clean_repo do
       # puts "Agreement : #{page.evaluate_script(%{$('#form-progress').data('save_work_control').depositAgreement.isAccepted})}"
       click_on('Save')
       expect(page).to have_content('My Test Work')
-      expect(page).to have_content "Your files are being processed by Hyrax in the background."
+      expect(page).to have_content "Your files are being processed by #{I18n.t('hyrax.product_name')} in the background."
     end
   end
 
-  context 'when the user is a proxy', perform_enqueued: [AttachFilesToWorkJob, IngestJob] do
+  context 'when the user is a proxy', perform_enqueued: [AttachFilesToWorkJob, IngestJob, ValkyrieIngestJob] do
     let(:second_user) { create(:user) }
 
     before do
@@ -91,14 +91,14 @@ RSpec.describe 'Creating a new Work', :js, :workflow, :clean_repo do
       # puts "Agreement : #{page.evaluate_script(%{$('#form-progress').data('save_work_control').depositAgreement.isAccepted})}"
       click_on('Save')
       expect(page).to have_content('My Test Work')
-      expect(page).to have_content "Your files are being processed by Hyrax in the background."
+      expect(page).to have_content "Your files are being processed by #{I18n.t('hyrax.product_name')} in the background."
 
       sign_in second_user
       click_link 'Works'
       expect(page).to have_content "My Test Work"
 
       # check that user can get to the files
-      within('.media-heading') do
+      within('.media-body') do
         click_link "My Test Work"
       end
       click_link "image.jp2"
@@ -107,7 +107,7 @@ RSpec.describe 'Creating a new Work', :js, :workflow, :clean_repo do
       visit '/dashboard'
       click_link 'Works'
 
-      within('.media-heading') do
+      within('.media-body') do
         click_link "My Test Work"
       end
       click_link "jp2_fits.xml"
@@ -117,6 +117,8 @@ RSpec.describe 'Creating a new Work', :js, :workflow, :clean_repo do
 
   context "when a file uploaded and then deleted" do
     before do
+      allow(Hyrax.config).to receive(:work_requires_files?).and_return(true)
+
       sign_in user
       click_link 'Works'
       find('#add-new-work-button').click
@@ -129,6 +131,7 @@ RSpec.describe 'Creating a new Work', :js, :workflow, :clean_repo do
       within('div#add-files') do
         attach_file("files[]", "#{Hyrax::Engine.root}/spec/fixtures/image.jp2", visible: false)
       end
+
       expect(page).to have_css('ul li#required-files.complete', text: 'Add files')
       click_button 'Delete' # delete the file
       expect(page).to have_css('ul li#required-files.incomplete', text: 'Add files')

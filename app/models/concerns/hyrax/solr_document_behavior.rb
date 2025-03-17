@@ -53,31 +53,38 @@ module Hyrax
     ##
     # @return [Boolean]
     def collection?
-      hydra_model == Hyrax.config.collection_class
+      Hyrax::ModelRegistry.collection_classes.include?(hydra_model)
     end
 
     ##
     # @return [Boolean]
     def file_set?
-      hydra_model == ::FileSet
+      Hyrax::ModelRegistry.file_set_classes.include?(hydra_model)
     end
 
     ##
     # @return [Boolean]
     def admin_set?
-      hydra_model == Hyrax.config.admin_set_class
+      Hyrax::ModelRegistry.admin_set_classes.include?(hydra_model)
     end
 
     ##
     # @return [Boolean]
     def work?
-      Hyrax.config.curation_concerns.include? hydra_model
+      Hyrax::ModelRegistry.work_classes.include?(hydra_model)
+    end
+
+    ##
+    # @return [Boolean]
+    def valkyrie?
+      self['valkyrie_bsi']
     end
 
     # Method to return the model
     def hydra_model(classifier: nil)
-      first('has_model_ssim')&.safe_constantize ||
-        model_classifier(classifier).classifier(self).best_model
+      model = first('has_model_ssim')&.safe_constantize
+      model = (first('has_model_ssim')&.+ 'Resource')&.safe_constantize if Hyrax.config.valkyrie_transition?
+      model || model_classifier(classifier).classifier(self).best_model
     end
 
     def depositor(default = '')
@@ -86,14 +93,15 @@ module Hyrax
     end
 
     def creator
+      # TODO: should we replace "hydra_model == AdminSet" with by #admin_set?
       solr_term = hydra_model == AdminSet ? "creator_ssim" : "creator_tesim"
       fetch(solr_term, [])
     end
 
     def visibility
-      @visibility ||= if embargo_release_date.present?
+      @visibility ||= if embargo_enforced?
                         Hydra::AccessControls::AccessRight::VISIBILITY_TEXT_VALUE_EMBARGO
-                      elsif lease_expiration_date.present?
+                      elsif lease_enforced?
                         Hydra::AccessControls::AccessRight::VISIBILITY_TEXT_VALUE_LEASE
                       elsif public?
                         Hydra::AccessControls::AccessRight::VISIBILITY_TEXT_VALUE_PUBLIC
@@ -106,6 +114,36 @@ module Hyrax
 
     def collection_type_gid
       first(Hyrax.config.collection_type_index_field)
+    end
+
+    def embargo_enforced?
+      return false if embargo_release_date.blank?
+
+      indexed_embargo_visibility = first('visibility_during_embargo_ssim')
+      # if we didn't index an embargo visibility, assume the release date means
+      # it's enforced
+      return true if indexed_embargo_visibility.blank?
+
+      # if the visibility and the visibility during embargo are the same, we're
+      # enforcing the embargo
+      self['visibility_ssi'] == indexed_embargo_visibility
+    end
+
+    def lease_enforced?
+      return false if lease_expiration_date.blank?
+
+      indexed_lease_visibility = first('visibility_during_lease_ssim')
+      # if we didn't index an embargo visibility, assume the release date means
+      # it's enforced
+      return true if indexed_lease_visibility.blank?
+
+      # if the visibility and the visibility during lease are the same, we're
+      # enforcing the lease
+      self['visibility_ssi'] == indexed_lease_visibility
+    end
+
+    def extensions_and_mime_types
+      JSON.parse(self['extensions_and_mime_types_ssm'].first).map(&:with_indifferent_access) if self['extensions_and_mime_types_ssm']
     end
 
     private

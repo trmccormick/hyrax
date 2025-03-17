@@ -1,9 +1,12 @@
 # frozen_string_literal: true
+
+return if Hyrax.config.disable_wings
+
 require 'spec_helper'
 require 'valkyrie/specs/shared_specs'
 require 'wings'
 
-RSpec.describe Wings::Valkyrie::QueryService, :clean_repo do
+RSpec.describe Wings::Valkyrie::QueryService, :active_fedora, :clean_repo do
   before do
     module Hyrax::Test
       module QueryService
@@ -85,6 +88,30 @@ RSpec.describe Wings::Valkyrie::QueryService, :clean_repo do
       persister.save(resource: Monograph.new)
       persister.save(resource: Monograph.new)
       expect(query_service.count_all_of_model(model: Monograph)).to eq(2)
+    end
+
+    it "can count AdminSet" do
+      expect(query_service.count_all_of_model(model: AdminSet)).to eq(0)
+    end
+
+    it "can count Hyrax::AdministrativeSet" do
+      expect(query_service.count_all_of_model(model: Hyrax::AdministrativeSet)).to eq(0)
+    end
+
+    it "can count the configured Hyrax.config.admin_set_model" do
+      expect(query_service.count_all_of_model(model: Hyrax.config.admin_set_class)).to eq(0)
+    end
+
+    it "can count Collection" do
+      expect(query_service.count_all_of_model(model: Collection)).to eq(0)
+    end
+
+    it "can count Hyrax::PcdmCollection" do
+      expect(query_service.count_all_of_model(model: Hyrax::PcdmCollection)).to eq(0)
+    end
+
+    it "can count the configured Hyrax.config.admin_set_model" do
+      expect(query_service.count_all_of_model(model: Hyrax.config.collection_class)).to eq(0)
     end
   end
 

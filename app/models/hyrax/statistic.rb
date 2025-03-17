@@ -25,47 +25,22 @@ module Hyrax
         combined_stats object, start_date, cache_column, event_type, user_id
       end
 
-      # Hyrax::Download is sent to Hyrax::Analytics.profile as #hyrax__download
-      # see Legato::ProfileMethods.method_name_from_klass
-      def ga_statistics(start_date, object)
-        path = polymorphic_path(object)
-        profile = Hyrax::Analytics.profile
-        unless profile
-          Rails.logger.error("Google Analytics profile has not been established. Unable to fetch statistics.")
-          return []
-        end
-        profile.hyrax__analytics__google__pageviews(sort: 'date',
-                                                    start_date: start_date,
-                                                    end_date: Date.yesterday,
-                                                    limit: 10_000)
-               .for_path(path)
-      end
-
       def query_works(query)
-        models = Hyrax.config.curation_concerns.map { |m| "\"#{m}\"" }
-        ActiveFedora::SolrService.query("has_model_ssim:(#{models.join(' OR ')})", fl: query, rows: 100_000)
+        models = Hyrax::ModelRegistry.work_rdf_representations.map { |m| "\"#{m}\"" }
+        response = Hyrax::SolrService.get(fq: "has_model_ssim:(#{models.join(' OR ')})", 'facet.field': query, 'facet.missing': true, rows: 0)
+        Hash[*response['facet_counts']['facet_fields'][query]]
       end
 
       def work_types
-        results = query_works("human_readable_type_tesim")
-        results.group_by { |result| result['human_readable_type_tesim'].join('') }.transform_values(&:count)
+        types = query_works("human_readable_type_sim")
+        types['Unknown'] = types.delete(nil)
+        types
       end
 
       def resource_types
-        results = query_works("resource_type_tesim")
-        resource_types = []
-        results.each do |y|
-          if y["resource_type_tesim"].nil? || (y["resource_type_tesim"] == [""])
-            resource_types.push("Unknown")
-          elsif y["resource_type_tesim"].count > 1
-            y["resource_type_tesim"].each do |t|
-              resource_types.push(t)
-            end
-          else
-            resource_types.push(y["resource_type_tesim"].join(""))
-          end
-        end
-        resource_types.group_by { |rt| rt }.transform_values(&:count)
+        types = query_works("resource_type_sim")
+        types['Unknown'] = types.delete(nil)
+        types
       end
 
       private
@@ -80,10 +55,10 @@ module Hyrax
         stat_cache_info = cached_stats(object, start_date, object_method)
         stats = stat_cache_info[:cached_stats]
         if stat_cache_info[:ga_start_date] < Time.zone.today
-          ga_stats = ga_statistics(stat_cache_info[:ga_start_date], object)
-          ga_stats.each do |stat|
+          page_stats = Hyrax::Analytics.page_statistics(stat_cache_info[:ga_start_date], object)
+          page_stats.each do |stat|
             lstat = build_for(object, date: stat[:date], object_method => stat[ga_key], user_id: user_id)
-            lstat.save unless Date.parse(stat[:date]) == Time.zone.today
+            lstat.save unless stat[:date].to_date == Time.zone.today
             stats << lstat
           end
         end

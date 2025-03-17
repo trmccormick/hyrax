@@ -1,7 +1,8 @@
 # frozen_string_literal: true
-RSpec.describe CharacterizeJob, :clean_repo do
+RSpec.describe CharacterizeJob, :active_fedora, :clean_repo do
   let(:file_set_id) { 'abc12345' }
-  let(:filename)    { Rails.root.join('tmp', 'uploads', 'ab', 'c1', '23', '45', 'abc12345', 'picture.png').to_s }
+  let(:upload_root) { Pathname.new(ENV.fetch('HYRAX_UPLOAD_PATH', Rails.root.join('tmp', 'uploads'))) }
+  let(:filename)    { upload_root.join('ab', 'c1', '23', '45', 'abc12345', 'picture.png').to_s }
   let(:label) { 'picture.png' }
   let(:title) { ['My User-Entered Title'] }
   let(:file_set) do
@@ -26,23 +27,33 @@ RSpec.describe CharacterizeJob, :clean_repo do
 
   before do
     allow(FileSet).to receive(:find).with(file_set_id).and_return(file_set)
-    allow(Hydra::Works::CharacterizationService).to receive(:run).with(file, filename)
+    allow(Hydra::Works::CharacterizationService).to receive(:run).with(file, filename, **Hyrax.config.characterization_options)
     allow(CreateDerivativesJob).to receive(:perform_later).with(file_set, file.id, filename)
   end
 
   context 'with valid filepath param' do
     let(:filename) { File.join(fixture_path, 'world.png') }
 
-    it 'skips Hyrax::WorkingDirectory' do
-      expect(Hyrax::WorkingDirectory).not_to receive(:find_or_retrieve)
-      expect(Hydra::Works::CharacterizationService).to receive(:run).with(file, filename)
+    it 'skips Hyrax::WorkingDirectory.copy_repository_resource_to_working_directory' do
+      expect(Hyrax::WorkingDirectory).not_to receive(:copy_repository_resource_to_working_directory)
+      expect(Hydra::Works::CharacterizationService).to receive(:run).with(file, filename, **Hyrax.config.characterization_options)
+      described_class.perform_now(file_set, file.id, filename)
+    end
+  end
+
+  context 'with no filepath param' do
+    let(:filename) { nil }
+
+    it 'uses Hyrax::WorkingDirectory.copy_repository_resource_to_working_directory to pull the repo file' do
+      expect(Hyrax::WorkingDirectory).to receive(:copy_repository_resource_to_working_directory)
+      expect(Hydra::Works::CharacterizationService).to receive(:run).with(file, filename, **Hyrax.config.characterization_options)
       described_class.perform_now(file_set, file.id, filename)
     end
   end
 
   context 'when the characterization proxy content is present' do
     it 'runs Hydra::Works::CharacterizationService and creates a CreateDerivativesJob' do
-      expect(Hydra::Works::CharacterizationService).to receive(:run).with(file, filename)
+      expect(Hydra::Works::CharacterizationService).to receive(:run).with(file, filename, **Hyrax.config.characterization_options)
       expect(file).to receive(:save!)
       expect(file_set).to receive(:update_index)
       expect(CreateDerivativesJob).to receive(:perform_later).with(file_set, file.id, filename)
@@ -59,7 +70,7 @@ RSpec.describe CharacterizeJob, :clean_repo do
 
   context 'FileSet with preexisting characterization metadata getting a new version' do
     before do
-      allow(Hydra::Works::CharacterizationService).to receive(:run).with(file, filename)
+      allow(Hydra::Works::CharacterizationService).to receive(:run).with(file, filename, **Hyrax.config.characterization_options)
       allow(CreateDerivativesJob).to receive(:perform_later).with(file_set, file.id, filename)
     end
 
@@ -81,12 +92,13 @@ RSpec.describe CharacterizeJob, :clean_repo do
         allow(file_set).to receive(:characterization_proxy).and_call_original
       end
 
-      context 'title and label were the previously the same' do
+      context 'title and label were previously the same' do
         let(:title) { ['old_filename.jpg'] }
         let(:label) { 'old_filename.jpg' }
 
         before do
-          allow(file_set).to receive_message_chain(:characterization_proxy, :original_name).and_return('new_filename.jpg') # rubocop:disable RSpec/MessageChain
+          allow(file_set).to receive_message_chain(:characterization_proxy, :original_name)
+            .and_return(String.new('new_filename.jpg', encoding: 'ASCII-8BIT')) # rubocop:disable RSpec/MessageChain
         end
 
         it 'sets title to label' do
@@ -96,6 +108,23 @@ RSpec.describe CharacterizeJob, :clean_repo do
           expect(file_set.title).to eq ['new_filename.jpg']
           expect(file_set.label).to eq 'new_filename.jpg'
         end
+
+        # https://github.com/samvera/hyrax/issues/5671
+        context 'original_name, which has encoding set to ASCII-8BIT, contains non-ASCII characters' do
+          before do
+            allow(file_set).to receive_message_chain(:characterization_proxy, :original_name)
+              .and_return(String.new('ファイル.txt', encoding: 'ASCII-8BIT')) # rubocop:disable RSpec/MessageChain
+          end
+
+          it 'does not raise an error, and still sets title to label' do
+            expect(file).to receive(:save!)
+            expect(file_set).to receive(:update_index)
+            expect { described_class.perform_now(file_set, file.id) }
+              .not_to raise_error(Encoding::UndefinedConversionError, '"\xE3" from ASCII-8BIT to UTF-8')
+            expect(file_set.title).to eq ['ファイル.txt']
+            expect(file_set.label).to eq 'ファイル.txt'
+          end
+        end
       end
 
       context 'title and label were not previously the same' do
@@ -103,7 +132,8 @@ RSpec.describe CharacterizeJob, :clean_repo do
         let(:label) { 'old_filename.jpg' }
 
         before do
-          allow(file_set).to receive_message_chain(:characterization_proxy, :original_name).and_return('new_filename.jpg') # rubocop:disable RSpec/MessageChain
+          allow(file_set).to receive_message_chain(:characterization_proxy, :original_name)
+            .and_return(String.new('new_filename.jpg', encoding: 'ASCII-8BIT')) # rubocop:disable RSpec/MessageChain
         end
 
         it 'assumes a user-entered title value and leaves title as-is' do
@@ -112,6 +142,23 @@ RSpec.describe CharacterizeJob, :clean_repo do
           described_class.perform_now(file_set, file.id)
           expect(file_set.title).to eq ['My User-Entered Title']
           expect(file_set.label).to eq 'new_filename.jpg'
+        end
+
+        # https://github.com/samvera/hyrax/issues/5671
+        context 'original_name, which has encoding set to ASCII-8BIT, contains non-ASCII characters' do
+          before do
+            allow(file_set).to receive_message_chain(:characterization_proxy, :original_name)
+              .and_return(String.new('ファイル.txt', encoding: 'ASCII-8BIT')) # rubocop:disable RSpec/MessageChain
+          end
+
+          it 'does not raise an error, and still sets title to label' do
+            expect(file).to receive(:save!)
+            expect(file_set).to receive(:update_index)
+            expect { described_class.perform_now(file_set, file.id) }
+              .not_to raise_error(Encoding::UndefinedConversionError, '"\xE3" from ASCII-8BIT to UTF-8')
+            expect(file_set.title).to eq ['My User-Entered Title']
+            expect(file_set.label).to eq 'ファイル.txt'
+          end
         end
       end
     end

@@ -5,8 +5,8 @@ module Hyrax
   class CollectionMembershipValidator < ActiveModel::Validator
     ##
     # @param multiple_membership_checker
-    def initialize(multiple_membership_checker: Hyrax::MultipleMembershipChecker, **options)
-      @multiple_membership_checker = multiple_membership_checker
+    def initialize(options = {})
+      @multiple_membership_checker = options[:multiple_membership_checker] || Hyrax::MultipleMembershipChecker
       super(options)
     end
 
@@ -16,8 +16,8 @@ module Hyrax
       checker = @multiple_membership_checker.new(item: nil)
       ids = collections_ids(record)
 
-      errors = Array(checker.check(collection_ids: ids))
-      record.errors[:member_of_collection_ids].concat(errors)
+      error = checker.check(collection_ids: ids)
+      record.errors.add(:member_of_collection_ids, error) if error
     end
 
     private
@@ -29,7 +29,7 @@ module Hyrax
         record.member_of_collections_attributes
               .each do |_k, h|
                 next if h["_destroy"] == "true"
-                collection_ids << Valkyrie::ID.new(h["id"])
+                collection_ids += [Valkyrie::ID.new(h["id"])]
               end
       end
 

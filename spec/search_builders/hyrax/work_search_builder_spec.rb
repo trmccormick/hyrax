@@ -13,7 +13,7 @@ RSpec.describe Hyrax::WorkSearchBuilder do
   end
 
   let(:class_filter_string) do
-    [Monograph, Collection, Hyrax.config.collection_class].uniq.join(',')
+    ([Monograph.to_s] + Hyrax::ModelRegistry.collection_rdf_representations).uniq.join(',')
   end
 
   describe "#query" do
@@ -73,7 +73,7 @@ RSpec.describe Hyrax::WorkSearchBuilder do
     context "when the current_work doesn't have a workflow entity" do
       before do
         expect(Hyrax::Workflow::PermissionQuery).to receive(:scope_permitted_workflow_actions_available_for_current_state)
-          .and_raise(PowerConverter::ConversionError.new(double, {}))
+          .and_raise(Sipity::ConversionError.new(double))
       end
 
       context "and the current user is not the depositor" do

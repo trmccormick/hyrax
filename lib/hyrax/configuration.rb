@@ -1,6 +1,6 @@
 # frozen_string_literal: true
+require 'hyrax/callbacks'
 require 'hyrax/role_registry'
-require 'samvera/nesting_indexer'
 
 module Hyrax
   ##
@@ -10,6 +10,8 @@ module Hyrax
   # engine options. For convenient reference, options are grouped into the
   # following functional areas:
   #
+  # - Analytics
+  # - Files
   # - Groups
   # - Identifiers
   # - IIIF
@@ -54,7 +56,7 @@ module Hyrax
   #
   # == Valkyrie
   #
-  # *Experimental:* Options for toggling Hyrax's experimental "Wings" valkyrie
+  # Options for toggling Hyrax's "Wings" valkyrie
   # adapter and configuring valkyrie.
   #
   # @see Hyrax.config
@@ -65,11 +67,23 @@ module Hyrax
       @registered_concerns = []
       @role_registry = Hyrax::RoleRegistry.new
       @default_active_workflow_name = DEFAULT_ACTIVE_WORKFLOW_NAME
-      @nested_relationship_reindexer = default_nested_relationship_reindexer
     end
 
     DEFAULT_ACTIVE_WORKFLOW_NAME = 'default'
     private_constant :DEFAULT_ACTIVE_WORKFLOW_NAME
+
+    # Set the default logger for Hyrax.
+    attr_writer :logger
+
+    ##
+    # @return [Logger]
+    def logger
+      @logger ||= if defined?(Rails)
+                    Rails.logger
+                  else
+                    Valkyrie.logger
+                  end
+    end
 
     # @api public
     # When an admin set is created, we need to activate a workflow.
@@ -105,11 +119,22 @@ module Hyrax
 
     # @!group Analytics
 
+    # This value determines whether to collect analytics or not
     attr_writer :analytics
     attr_reader :analytics
     def analytics?
       @analytics ||=
         ActiveModel::Type::Boolean.new.cast(ENV.fetch('HYRAX_ANALYTICS', false))
+    end
+
+    # This value determines whether to show reports on the dashboard, work and collection report pages
+    # With Google: it's dependent on the GOOGLE_OAUTH_XXX values
+    # With Matomo: TODO
+    attr_writer :analytics_reporting
+    attr_reader :analytics_reporting
+    def analytics_reporting?
+      @analytics_reporting ||=
+        ActiveModel::Type::Boolean.new.cast(ENV.fetch('HYRAX_ANALYTICS_REPORTING', false))
     end
 
     # Currently supports 'google' or 'matomo'
@@ -137,21 +162,162 @@ module Hyrax
     attr_writer :analytic_start_date
     attr_reader :analytic_start_date
 
+    # @!endgroup
+    # @!group Files
+
     ##
-    # @deprecated use analytics_id from config/analytics.yml instead
-    def google_analytics_id=(value)
-      Deprecation.warn("google_analytics_id is deprecated; use analytics_id from config/analytics.yml instead.")
-      Hyrax::Analytics.config.analytics_id = value
+    # @!attribute [rw] characterization_service
+    #   @return [#run] the service to use for charactaerization for Valkyrie
+    #     objects
+    #   @ see Hyrax::Characterization::ValkyrieCharacterizationService
+    attr_writer :characterization_service
+    def characterization_service
+      @characterization_service ||=
+        Hyrax::Characterization::ValkyrieCharacterizationService
     end
 
     ##
-    # @deprecated use analytics_id from config/analytics.yml instead
-    def google_analytics_id
-      Deprecation.warn("google_analytics_id is deprecated; use analytics_id from config/analytics.yml instead.")
-      Hyrax::Analytics.config.analytics_id
+    # Options to pass to the characterization service
+    # @!attribute [rw] characterization_options
+    #  @return [Hash] of options like {ch12n_tool: :fits_servlet}
+    attr_writer :characterization_options
+    def characterization_options
+      @characterization_options ||= { ch12n_tool: ENV.fetch('CH12N_TOOL', 'fits').to_sym }
     end
-    alias google_analytics_id? google_analytics_id
 
+    ##
+    # @!attribute [w] characterization_proxy
+    #   Which FileSet file to use for mime type resolution
+    #   @ see Hyrax::FileSetTypeService
+    attr_writer :characterization_proxy
+    def characterization_proxy
+      @characterization_proxy ||= :original_file
+    end
+
+    # Override characterization runner
+    attr_accessor :characterization_runner
+
+    def mime_types_map # rubocop:disable Metrics/MethodLength
+      {
+        audio_mime_types: [
+          'audio/mp3',
+          'audio/mpeg',
+          'audio/wav',
+          'audio/x-wave',
+          'audio/x-wav',
+          'audio/ogg'
+        ],
+        image_mime_types: [
+          'image/png',
+          'image/jpeg',
+          'image/jpg',
+          'image/jp2',
+          'image/bmp',
+          'image/gif',
+          'image/tiff'
+        ],
+        office_mime_types: [
+          'text/rtf',
+          'application/msword',
+          'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+          'application/vnd.oasis.opendocument.text',
+          'application/vnd.ms-excel',
+          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          'application/vnd.ms-powerpoint',
+          'application/vnd.openxmlformats-officedocument.presentationml.presentation'
+        ],
+        pdf_mime_types: ['application/pdf'],
+        video_mime_types: [
+          'video/mpeg',
+          'video/mp4',
+          'video/webm',
+          'video/x-msvideo',
+          'video/avi',
+          'video/quicktime',
+          'application/mxf'
+        ]
+      }
+    end
+
+    # First see if we can get them from the FileSet model. If not, use
+    # configuration.
+    # @param [Symbol] type as listed in mime_types_map keys, aligned with
+    # FileSet method names for backwards compatibility.
+    def lookup_mimes(type)
+      vals = "FileSet".safe_constantize.try(type)
+      return vals if vals.is_a?(Array)
+      mime_types_map[type]
+    end
+
+    attr_writer :derivative_mime_type_mappings
+
+    ##
+    # Maps mimetypes to create_*_derivatives methods
+    #
+    # @note these used to be set by +Hydra::Works::MimeTypes+ methods injected
+    #   into `FileSet`. for backwards compatibility, those are used as defaults
+    #   if present, but since `FileSet` is an application side model (and slated
+    #   to be removed) we shouldn't count on it providing these methods.
+    #
+    # @see Hyrax::VaDerivativeService
+    def derivative_mime_type_mappings
+      @derivative_mime_type_mappings ||=
+        { audio: lookup_mimes(:audio_mime_types),
+          image: lookup_mimes(:image_mime_types),
+          office: lookup_mimes(:office_mime_types),
+          pdf: lookup_mimes(:pdf_mime_types),
+          video: lookup_mimes(:video_mime_types) }
+    end
+
+    attr_writer :derivative_services
+    # The registered candidate derivative services.  In the array, the first `valid?` candidate will
+    # handle the derivative generation.
+    #
+    # @return [Array] of objects that conform to Hyrax::DerivativeService interface.
+    # @see Hyrax::DerivativeService
+    def derivative_services
+      @derivative_services ||= [Hyrax::FileSetDerivativesService]
+    end
+
+    attr_writer :file_set_model
+    ##
+    # @return [#constantize] a string representation of the admin set
+    #   model
+    def file_set_model
+      @file_set_model ||= 'Hyrax::FileSet'
+    end
+
+    ##
+    # @return [Class] the configured admin set model class
+    def file_set_class
+      file_set_model.constantize
+    end
+
+    ##
+    # @!attribute [rw] file_set_file_service
+    #   @return [Class] implementer of {Hyrax::FileSetFileService}
+    attr_writer :file_set_file_service
+    def file_set_file_service
+      @file_set_file_service ||= Hyrax::FileSetFileService
+    end
+
+    attr_writer :fixity_service
+    def fixity_service
+      @fixity_service ||= Hyrax::Fixity::ActiveFedoraFixityService
+    end
+
+    # This value determines whether to use load the Freyja adapter in dassie
+    attr_writer :valkyrie_transition
+    attr_reader :valkyrie_transition
+    def valkyrie_transition?
+      @valkyrie_transition ||=
+        ActiveModel::Type::Boolean.new.cast(ENV.fetch('VALKYRIE_TRANSITION', false))
+    end
+
+    attr_writer :max_days_between_fixity_checks
+    def max_days_between_fixity_checks
+      @max_days_between_fixity_checks ||= 7
+    end
     # @!endgroup
     # @!group Groups
 
@@ -397,6 +563,11 @@ module Hyrax
       @banner_image ||= 'https://user-images.githubusercontent.com/101482/29949206-ffa60d2c-8e67-11e7-988d-4910b8787d56.jpg'
     end
 
+    attr_writer :breadcrumb_builder
+    def breadcrumb_builder
+      @breadcrumb_builder ||= Hyrax::BootstrapBreadcrumbsBuilder
+    end
+
     ##
     # @return [Boolean]
     def disable_wings
@@ -404,6 +575,22 @@ module Hyrax
       ActiveModel::Type::Boolean.new.cast(ENV.fetch('HYRAX_SKIP_WINGS', false))
     end
     attr_writer :disable_wings
+
+    ##
+    # @return [Boolean]
+    def disable_freyja
+      return @disable_freyja unless @disable_freyja.nil?
+      ActiveModel::Type::Boolean.new.cast(ENV.fetch('HYRAX_SKIP_FREYJA', false))
+    end
+    attr_writer :disable_freyja
+
+    ##
+    # @return [Boolean]
+    def disable_frigg
+      return @disable_frigg unless @disable_frigg.nil?
+      ActiveModel::Type::Boolean.new.cast(ENV.fetch('HYRAX_SKIP_FRIGG', false))
+    end
+    attr_writer :disable_frigg
 
     attr_writer :display_media_download_link
     # @return [Boolean]
@@ -439,6 +626,20 @@ module Hyrax
       @derivatives_storage_adapter = Valkyrie::StorageAdapter.find(adapter.to_sym)
     end
 
+    # A HTTP connection to use for Valkyrie Fedora requests
+    #
+    # @return [#call] lambda/proc that generates a Faraday connection
+    def fedora_connection_builder
+      @fedora_connection_builder ||= lambda { |url|
+        Faraday.new(url) do |f|
+          f.request :multipart
+          f.request :url_encoded
+          f.adapter Faraday.default_adapter
+        end
+      }
+    end
+    attr_writer :fedora_connection_builder
+
     ##
     # @return [#save, #save_all, #delete, #wipe!] an indexing adapter
     def index_adapter
@@ -452,18 +653,20 @@ module Hyrax
     end
 
     ##
-    # @return [Boolean] whether to use the experimental valkyrie index
+    # @return [Boolean] whether to use the valkyrie index
     def query_index_from_valkyrie
       @query_index_from_valkyrie ||= false
     end
     attr_writer :query_index_from_valkyrie
 
     ##
-    # @return [Boolean] whether to use experimental valkyrie storage features
+    # @return [Boolean] whether to use valkyrie storage features
     def use_valkyrie?
+      return @use_valkyrie unless @use_valkyrie.nil?
       return true if disable_wings # always return true if wings is disabled
       ActiveModel::Type::Boolean.new.cast(ENV.fetch('HYRAX_VALKYRIE', false))
     end
+    attr_writer :use_valkyrie
     # @!endgroup
 
     attr_writer :feature_config_path
@@ -482,39 +685,6 @@ module Hyrax
     attr_writer :microdata_default_type
     def microdata_default_type
       @microdata_default_type ||= 'http://schema.org/CreativeWork'
-    end
-
-    attr_writer :fixity_service
-    def fixity_service
-      @fixity_service ||= Hyrax::Fixity::ActiveFedoraFixityService
-    end
-
-    attr_writer :max_days_between_fixity_checks
-    def max_days_between_fixity_checks
-      @max_days_between_fixity_checks ||= 7
-    end
-
-    # Override characterization runner
-    attr_accessor :characterization_runner
-
-    ##
-    # @!attribute [rw] characterization_service
-    #   @return [#run] the service to use for charactaerization for Valkyrie
-    #     objects
-    #   @ see Hyrax::Characterization::ValkyrieCharacterizationService
-    attr_writer :characterization_service
-    def characterization_service
-      @characterization_service ||=
-        Hyrax::Characterization::ValkyrieCharacterizationService
-    end
-
-    ##
-    # @!attribute [w] characterization_proxy
-    #   Which FileSet file to use for mime type resolution
-    #   @ see Hyrax::FileSetTypeService
-    attr_writer :characterization_proxy
-    def characterization_proxy
-      @characterization_proxy ||= :original_file
     end
 
     # Attributes for the lock manager which ensures a single process/thread is mutating a ore:Aggregation at once.
@@ -544,20 +714,6 @@ module Hyrax
     attr_writer :ingest_queue_name
     def ingest_queue_name
       @ingest_queue_name ||= :default
-    end
-
-    # @deprecated
-    def whitelisted_ingest_dirs
-      Deprecation.warn(self, "Samvera is deprecating #{self.class}#whitelisted_ingest_dirs " \
-        "in Hyrax 3.0. Instead use #{self.class}#registered_ingest_dirs.")
-      registered_ingest_dirs
-    end
-
-    # @deprecated
-    def whitelisted_ingest_dirs=(input)
-      Deprecation.warn(self, "Samvera is deprecating #{self.class}#whitelisted_ingest_dirs= " \
-        "in Hyrax 3.0. Instead use #{self.class}#registered_ingest_dirs=.")
-      self.registered_ingest_dirs = input
     end
 
     # @!attribute [w] registered_ingest_dirs
@@ -629,9 +785,10 @@ module Hyrax
       @persistent_hostpath ||= "http://localhost/files/"
     end
 
+    attr_accessor :redis_connection
     attr_writer :redis_namespace
     def redis_namespace
-      @redis_namespace ||= "hyrax"
+      @redis_namespace ||= ENV.fetch("HYRAX_REDIS_NAMESPACE", "hyrax")
     end
 
     attr_writer :libreoffice_path
@@ -672,7 +829,7 @@ module Hyrax
       # overriding the value in0 their config unless it's already
       # flipped to false
       if ENV.fetch('SERVER_SOFTWARE', '').match(/Apache.*Phusion_Passenger/).present?
-        Rails.logger.warn('Cannot enable realtime notifications atop Passenger + Apache. Coercing `Hyrax.config.realtime_notifications` to `false`. Set this value to `false` in config/initializers/hyrax.rb to stop seeing this warning.') unless @realtime_notifications == false
+        Hyrax.logger.warn('Cannot enable realtime notifications atop Passenger + Apache. Coercing `Hyrax.config.realtime_notifications` to `false`. Set this value to `false` in config/initializers/hyrax.rb to stop seeing this warning.') unless @realtime_notifications == false
         @realtime_notifications = false
       end
       return @realtime_notifications unless @realtime_notifications.nil?
@@ -683,6 +840,11 @@ module Hyrax
     def geonames_username=(username)
       Qa::Authorities::Geonames.username = username
     end
+
+    def location_service
+      @location_service ||= Hyrax::LocationService.new
+    end
+    attr_writer :location_service
 
     attr_writer :active_deposit_agreement_acceptance
     def active_deposit_agreement_acceptance?
@@ -734,7 +896,7 @@ module Hyrax
     # @return [#constantize] a string representation of the collection
     #   model
     def collection_model
-      @collection_model ||= '::Collection'
+      @collection_model ||= 'Hyrax::PcdmCollection'
     end
 
     ##
@@ -743,18 +905,48 @@ module Hyrax
       collection_model.safe_constantize
     end
 
+    ##
+    # @api private
+    #
+    # There are assumptions baked into {Wings} and tests regarding what the
+    # correct conceptual collection will be.  This helps provide that connective
+    # tissue.
+    #
+    # It is definitely a hack to appease tests and the Double Combo/Goddess
+    # adapter migration.
+    def collection_class_for_wings
+      return collection_class if collection_class < Hyrax::Resource
+
+      Hyrax::PcdmCollection
+    end
+
     attr_writer :admin_set_model
     ##
     # @return [#constantize] a string representation of the admin set
     #   model
     def admin_set_model
-      @admin_set_model ||= 'AdminSet'
+      @admin_set_model ||= 'Hyrax::AdministrativeSet'
     end
 
     ##
     # @return [Class] the configured admin set model class
     def admin_set_class
       admin_set_model.constantize
+    end
+
+    ##
+    # @api private
+    #
+    # There are assumptions baked into {Wings} and tests regarding what the
+    # correct conceptual admin set will be.  This helps provide that connective
+    # tissue.
+    #
+    # It is definitely a hack to appease tests and the Double Combo/Goddess
+    # adapter migration.
+    def admin_set_class_for_wings
+      return admin_set_class if admin_set_class < Hyrax::Resource
+
+      Hyrax::AdministrativeSet
     end
 
     ##
@@ -786,6 +978,70 @@ module Hyrax
     attr_writer :index_field_mapper
     def index_field_mapper
       @index_field_mapper ||= ActiveFedora.index_field_mapper
+    end
+
+    attr_writer :administrative_set_form
+    ##
+    # @return [Class]
+    def administrative_set_form
+      @administrative_set_form ||= Hyrax::Forms::AdministrativeSetForm
+    end
+
+    attr_writer :file_set_form
+    ##
+    # @return [Class]
+    def file_set_form
+      @file_set_form ||= Hyrax::Forms::FileSetForm
+    end
+
+    attr_writer :pcdm_collection_form
+    ##
+    # @return [Class]
+    def pcdm_collection_form
+      @pcdm_collection_form ||= Hyrax::Forms::PcdmCollectionForm
+    end
+
+    attr_writer :pcdm_object_form_builder
+    ##
+    # @return [Proc]
+    def pcdm_object_form_builder
+      return @pcdm_object_form_builder unless @pcdm_object_form_builder.nil?
+      "Hyrax::Forms::PcdmObjectForm".constantize # autoload
+      @pcdm_object_form_builder = lambda do |model_class|
+        Hyrax::Forms::PcdmObjectForm(model_class)
+      end
+    end
+
+    attr_writer :administrative_set_indexer
+    ##
+    # @return [Class]
+    def administrative_set_indexer
+      @administrative_set_indexer ||= Hyrax::Indexers::AdministrativeSetIndexer
+    end
+
+    attr_writer :file_set_indexer
+    ##
+    # @return [Class]
+    def file_set_indexer
+      @file_set_indexer ||= Hyrax::Indexers::FileSetIndexer
+    end
+
+    attr_writer :pcdm_collection_indexer
+    ##
+    # @return [Class]
+    def pcdm_collection_indexer
+      @pcdm_collection_indexer ||= Hyrax::Indexers::PcdmCollectionIndexer
+    end
+
+    attr_writer :pcdm_object_indexer_builder
+    ##
+    # @return [Proc]
+    def pcdm_object_indexer_builder
+      return @pcdm_object_indexer_builder unless @pcdm_object_indexer_builder.nil?
+      "Hyrax::Indexers::PcdmObjectIndexer".constantize # autoload
+      @pcdm_object_indexer_builder = lambda do |model_class|
+        Hyrax::Indexers::PcdmObjectIndexer(model_class)
+      end
     end
 
     # Should a button with "Share my work" show on the front page to users who are not logged in?
@@ -834,18 +1090,7 @@ module Hyrax
     attr_writer :translate_id_to_uri
     def translate_id_to_uri
       @translate_id_to_uri ||= lambda do |id|
-        "#{ActiveFedora.fedora.host}#{ActiveFedora.fedora.base_path}/#{::Noid::Rails.treeify(id)}"
-      end
-    end
-
-    attr_writer :resource_id_to_uri_transformer
-    def resource_id_to_uri_transformer
-      Deprecation.warn('Use Hyrax.config.translate_uri_to_id instead.')
-
-      @resource_id_to_uri_transformer ||= lambda do |resource, base_url|
-        file_id = CGI.escape(resource.file_identifier.to_s)
-        fs_id = CGI.escape(resource.file_set_id.to_s)
-        "#{base_url}#{::Noid::Rails.treeify(fs_id)}/files/#{file_id}"
+        "#{ActiveFedora.fedora.host}#{ActiveFedora.fedora.base_path}/#{::Noid::Rails.treeify(id.to_s)}"
       end
     end
 
@@ -867,23 +1112,17 @@ module Hyrax
 
     attr_writer :uploader
     def uploader
-      @uploader ||= if Rails.env.development?
-                      # use sequential uploads in development to avoid database locking problems with sqlite3.
-                      default_uploader_config.merge(limitConcurrentUploads: 1, sequentialUploads: true)
-                    else
-                      default_uploader_config
-                    end
-    end
-
-    attr_accessor :nested_relationship_reindexer
-
-    def default_nested_relationship_reindexer
-      ->(id:, extent:) { Samvera::NestingIndexer.reindex_relationships(id: id, extent: extent) }
+      @uploader ||= default_uploader_config
     end
 
     attr_writer :solr_select_path
     def solr_select_path
       @solr_select_path ||= ActiveFedora.solr_config.fetch(:select_path, 'select')
+    end
+
+    attr_writer :solr_default_method
+    def solr_default_method
+      @solr_default_method ||= :post
     end
 
     attr_writer :identifier_registrars
@@ -903,6 +1142,35 @@ module Hyrax
     # @return [Array<Integer>]
     def range_for_number_of_results_to_display_per_page
       @range_for_number_of_results_to_display_per_page ||= [10, 20, 50, 100]
+    end
+
+    attr_writer :visibility_map
+    # A mapping from visibility string values to permissions; the default and
+    # reference implementation is provided by {Hyrax::VisibilityMap}.
+    #
+    # @return [Hyrax::VisibilityMap]
+    # @see Hyrax::VisibilityReader
+    # @see Hyrax::VisibilityWriter
+    def visibility_map
+      @visibility_map ||= Hyrax::VisibilityMap.instance
+    end
+
+    attr_writer :simple_schema_loader_config_search_paths
+    # A configuration for modifying the SimpleSchemaLoader#config_search_paths
+    # which will allow gems to add their own metadata yaml files and easily keep
+    # them within the gem.
+    #
+    # @return [Array<Pathname>]
+    # @see Hyrax::SimpleSchemaLoader#config_search_paths
+    # @example
+    #   Hyrax.config do |config|
+    #     config.simple_schema_loader_config_search_paths.unshift(HykuKnapsack::Engine.root)
+    #   end
+    #
+    #   Hyrax.config.simple_schema_loader_config_search_paths
+    #   => [#<Pathname:/app/samvera>, #<Pathname:/app/samvera/hyrax-webapp>, #<Pathname:/app/samvera/hyrax-webapp/gems/hyrax>]
+    def simple_schema_loader_config_search_paths
+      @simple_schema_loader_config_search_paths ||= [Rails.root, Hyrax::Engine.root]
     end
 
     private

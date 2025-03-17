@@ -29,13 +29,18 @@ module Hyrax
         # @return [Dry::Monads::Result] `Success(work)` if the change_set is
         #   applied and the resource is saved;
         #   `Failure([#to_s, change_set.resource])`, otherwise.
+        # rubocop:disable Metrics/MethodLength, Metrics/AbcSize
         def call(change_set, user: nil)
           begin
+            valid_future_date?(change_set.lease, 'lease_expiration_date') if change_set.respond_to?(:lease) && change_set.lease
+            valid_future_date?(change_set.embargo, 'embargo_release_date') if change_set.respond_to?(:embargo) && change_set.embargo
             new_collections = changed_collection_membership(change_set)
+
             unsaved = change_set.sync
+            save_lease_or_embargo(unsaved)
             saved = @persister.save(resource: unsaved)
           rescue StandardError => err
-            return Failure(["Failed save on #{change_set}\n\t#{err.message}", change_set.resource])
+            return Failure.new(["Failed save on #{change_set}\n\t#{err.message}", change_set.resource], err.backtrace.first)
           end
 
           # if we have a permission manager, it's acting as a local cache of another resource.
@@ -48,8 +53,25 @@ module Hyrax
           publish_changes(resource: saved, user: user, new: unsaved.new_record, new_collections: new_collections)
           Success(saved)
         end
+        # rubocop:enable Metrics/MethodLength, Metrics/AbcSize
 
         private
+
+        def valid_future_date?(item, attribute)
+          return true if item.fields[attribute].blank?
+          raise StandardError, "#{item.model} must use a future date" if item.fields[attribute] < Time.zone.now
+        end
+
+        def save_lease_or_embargo(unsaved)
+          if unsaved.embargo.present?
+            unsaved.embargo.embargo_release_date = unsaved.embargo.embargo_release_date&.to_datetime
+            unsaved.embargo = @persister.save(resource: unsaved.embargo)
+          end
+          return if unsaved.lease.blank?
+
+          unsaved.lease.lease_expiration_date = unsaved.lease.lease_expiration_date&.to_datetime
+          unsaved.lease = @persister.save(resource: unsaved.lease)
+        end
 
         ##
         # @param [Hyrax::ChangeSet] change_set

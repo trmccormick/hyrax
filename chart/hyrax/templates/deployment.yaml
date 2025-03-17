@@ -38,7 +38,9 @@ spec:
                 name: {{ .Values.solrExistingSecret }}
             {{- end }}
           env:
-            {{- toYaml .Values.extraEnvVars | nindent 12 }}
+            {{- if .Values.extraEnvVars }}
+            {{- include "hyrax.tplvalues.render" (dict "value" .Values.extraEnvVars "context" $) | nindent 12 }}
+            {{- end }}
           command:
             - sh
             - -c
@@ -66,7 +68,9 @@ spec:
               {{- toYaml . | nindent 12 }}
             {{- end }}
           env:
-            {{- toYaml .Values.extraEnvVars | nindent 12 }}
+            {{- if .Values.extraEnvVars }}
+            {{- include "hyrax.tplvalues.render" (dict "value" .Values.extraEnvVars "context" $) | nindent 12 }}
+            {{- end }}
           command:
             - sh
             - -c
@@ -101,11 +105,25 @@ spec:
               {{- toYaml . | nindent 12 }}
             {{- end }}
           env:
-            {{- toYaml .Values.extraEnvVars | nindent 12 }}
+            {{- if .Values.extraEnvVars }}
+            {{- include "hyrax.tplvalues.render" (dict "value" .Values.extraEnvVars "context" $) | nindent 12 }}
+            {{- end }}
           ports:
             - name: http
               containerPort: 3000
               protocol: TCP
+          {{- if .Values.startupProbe.enabled }}
+          startupProbe:
+            initialDelaySeconds: {{ .Values.startupProbe.initialDelaySeconds | default 5 }}
+            timeoutSeconds: {{ .Values.startupProbe.timeoutSeconds | default 5 }}
+            failureThreshold: {{ .Values.startupProbe.failureThreshold | default 3 }}
+            periodSeconds: {{ .Values.startupProbe.periodSeconds | default 10}}
+            successThreshold: {{ .Values.startupProbe.successThreshold | default 1 }}
+            httpGet:
+              scheme: "HTTP"
+              path: {{ .Values.startupProbe.path | default "/" }}
+              port: 3000
+          {{- end }}
           {{- if .Values.livenessProbe.enabled }}
           livenessProbe:
             initialDelaySeconds: {{ .Values.livenessProbe.initialDelaySeconds | default 5 }}

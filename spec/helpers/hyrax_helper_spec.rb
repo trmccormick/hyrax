@@ -5,8 +5,8 @@ end
 
 RSpec.describe HyraxHelper, type: :helper do
   describe "show_transfer_request_title" do
-    let(:sender) { create(:user) }
-    let(:user) { create(:user) }
+    let(:sender) { FactoryBot.create(:user) }
+    let(:user) { FactoryBot.create(:user) }
 
     context "when work is canceled" do
       let(:request) do
@@ -34,20 +34,20 @@ RSpec.describe HyraxHelper, type: :helper do
     context 'with unread messages' do
       let(:unread_count) { 10 }
 
-      it 'renders with label-danger and is visible' do
-        expect(subject).to eq '<a aria-label="Foobar" class="notify-number" href="/notifications"><span class="fa fa-bell"></span>' \
+      it 'renders with badge-danger and is visible' do
+        expect(subject).to eq '<a aria-label="Foobar" class="notify-number nav-link" href="/notifications"><span class="fa fa-bell"></span>' \
                               "\n" \
-                              '<span class="count label label-danger">10</span></a>'
+                              '<span class="count badge badge-danger">10</span></a>'
       end
     end
 
     context 'with no unread messages' do
       let(:unread_count) { 0 }
 
-      it 'renders with label-default and is invisible' do
-        expect(subject).to eq '<a aria-label="Foobar" class="notify-number" href="/notifications"><span class="fa fa-bell"></span>' \
+      it 'renders with badge-secondary and is invisible' do
+        expect(subject).to eq '<a aria-label="Foobar" class="notify-number nav-link" href="/notifications"><span class="fa fa-bell"></span>' \
                               "\n" \
-                              '<span class="count label invisible label-default">0</span></a>'
+                              '<span class="count badge invisible badge-secondary">0</span></a>'
       end
     end
   end
@@ -278,7 +278,7 @@ RSpec.describe HyraxHelper, type: :helper do
 
   describe "#iconify_auto_link" do
     let(:text)              { 'Foo < http://www.example.com. & More text' }
-    let(:linked_text)       { 'Foo &lt; <a href="http://www.example.com"><span class="glyphicon glyphicon-new-window"></span> http://www.example.com</a>. &amp; More text' }
+    let(:linked_text)       { 'Foo &lt; <a href="http://www.example.com"><span class="fa fa-external-link"></span> http://www.example.com</a>. &amp; More text' }
     let(:document)          { SolrDocument.new(has_model_ssim: ['GenericWork'], id: 512, title_tesim: text, description_tesim: text) }
     let(:blacklight_config) { CatalogController.blacklight_config }
 
@@ -300,7 +300,7 @@ RSpec.describe HyraxHelper, type: :helper do
         expect(subject).to include('<a href="http://www.example.com">')
       end
       it "adds icons" do
-        expect(subject).to include('class="glyphicon glyphicon-new-window"')
+        expect(subject).to include('class="fa fa-external-link"')
       end
     end
 
@@ -368,12 +368,14 @@ RSpec.describe HyraxHelper, type: :helper do
     let(:repository) { double }
 
     before do
-      allow(controller).to receive(:repository).and_return(repository)
+      allow(controller).to receive(:blacklight_config).and_return(CatalogController.blacklight_config)
+      allow(controller.blacklight_config).to receive(:repository).and_return(repository)
       allow(solr_doc).to receive(:[]).with("title_tesim").and_return(["Collection of Awesomeness"])
       allow(bad_solr_doc).to receive(:[]).with("title_tesim").and_return(nil)
       allow(repository).to receive(:find).with("abcd12345").and_return(solr_response)
       allow(repository).to receive(:find).with("efgh67890").and_return(bad_solr_response)
       allow(repository).to receive(:find).with("bad-id").and_return(empty_solr_response)
+      allow(repository).to receive(:find).with("error-id").and_raise(Blacklight::Exceptions::RecordNotFound)
     end
 
     it "returns the first title of the collection" do
@@ -387,6 +389,10 @@ RSpec.describe HyraxHelper, type: :helper do
     it "returns nil if collection not found" do
       expect(helper.collection_title_by_id("bad-id")).to eq nil
     end
+
+    it "returns nil if RecordNotFound is raised" do
+      expect(helper.collection_title_by_id("error-id")).to eq nil
+    end
   end
 
   describe "#thumbnail_label_for" do
@@ -394,7 +400,14 @@ RSpec.describe HyraxHelper, type: :helper do
       expect(helper.thumbnail_label_for(object: Object.new)).to be_a String
     end
 
-    it 'interoperates with CollectionForm' do
+    it 'interoperates with display objects with #thumbnail_title' do
+      model_or_presenter_or_form = double(thumbnail_title: 'my display thumbnail title')
+
+      expect(helper.thumbnail_label_for(object: model_or_presenter_or_form))
+        .to eq 'my display thumbnail title'
+    end
+
+    it 'interoperates with CollectionForm', :active_fedora do
       collection = ::Collection.new
       collection.thumbnail = ::FileSet.create(title: ["thumbnail"])
 
@@ -405,7 +418,7 @@ RSpec.describe HyraxHelper, type: :helper do
       expect(helper.thumbnail_label_for(object: form)).to eq 'thumbnail'
     end
 
-    it 'interoperates with AdminSetForm' do
+    it 'interoperates with AdminSetForm', :active_fedora do
       admin_set = AdminSet.new
       admin_set.thumbnail = ::FileSet.create(title: ["thumbnail"])
 
@@ -414,6 +427,25 @@ RSpec.describe HyraxHelper, type: :helper do
                                             :FAKE_BLACKLIGHT_REPOSITORY)
 
       expect(helper.thumbnail_label_for(object: form)).to eq 'thumbnail'
+    end
+  end
+
+  describe "#cast_to_date_time_format" do
+    it "casts well date-like strings to the specified format" do
+      expect(helper.cast_to_date_time_format("2022-08-29 09:41:00 -0400", format: "%Y-%m-%d")).to eq("2022-08-29")
+    end
+
+    it "casts well date-like strings to the specified format" do
+      now = Time.zone.now
+      expect(helper.cast_to_date_time_format(now, format: "%Y-%m-%d")).to eq(now.strftime("%Y-%m-%d"))
+    end
+
+    it "falls back to the given string" do
+      expect(helper.cast_to_date_time_format("Hyrax Life", format: "%Y-%m-%d")).to eq("Hyrax Life")
+    end
+
+    it "casts nil to empty string" do
+      expect(helper.cast_to_date_time_format(nil, format: "%Y-%m-%d")).to eq("")
     end
   end
 end

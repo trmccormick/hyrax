@@ -22,17 +22,6 @@ module Hyrax
                           "encountered an error #{err.message}. should this " \
                           "object be in a FileSet #{event[:metadata]}"
       end
-
-      ##
-      # Called when 'object.file.uploaded' event is published
-      # @param [Dry::Events::Event] event
-      # @return [void]
-      def on_object_file_uploaded(event)
-        # Run characterization
-        Hyrax.config
-             .characterization_service
-             .run(metadata: event[:metadata], file: event[:metadata].file)
-      end
     end
   end
 end

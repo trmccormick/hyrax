@@ -11,10 +11,20 @@ module Hyrax
     delegate :controller, :controller_name, :action_name, :content_tag,
              :current_page?, :link_to, :can?, :tag, to: :view_context
 
+    ##
+    # @!group Class Attributes
+    #
+    # @!attribute section_controller_names [r|w]
+    #   @return [Array<String>]
+    #   @see #settings_section?
+    class_attribute :section_controller_names, default: %w[appearances content_blocks features pages collection_types]
+    # @!endgroup Class Attributes
+    ##
+
     # Returns true if the current controller happens to be one of the controllers that deals
     # with settings.  This is used to keep the parent section on the sidebar open.
     def settings_section?
-      %w[appearances content_blocks features pages collection_types].include?(controller_name)
+      section_controller_names.include?(controller_name)
     end
 
     # @param options [Hash, String] a hash or string representing the path. Hash is prefered as it
@@ -22,8 +32,8 @@ module Hyrax
     # @param also_active_for [Hash, String] a hash or string with alternative paths that should be 'active'
     def nav_link(options, also_active_for: nil, **link_html_options)
       active_urls = [options, also_active_for].compact
-      list_options = active_urls.any? { |url| current_page?(url) } ? { class: 'active' } : {}
-      tag.li(list_options) do
+      list_options = active_urls.any? { |url| current_page?(url) } ? { class: 'active nav-item' } : { class: 'nav-item' }
+      tag.li(**list_options) do
         link_to(options, link_html_options) do
           yield
         end
@@ -47,12 +57,14 @@ module Hyrax
       %w[work_reports collection_reports].include?(controller_name)
     end
 
+    ##
     # Draw a collaspable menu section. The passed block should contain <li> items.
-    def collapsable_section(text, id:, icon_class:, open:, &block)
+    def collapsable_section(text, id:, icon_class:, open:, title: nil, &block)
       CollapsableSectionPresenter.new(view_context: view_context,
                                       text: text,
                                       id: id,
                                       icon_class: icon_class,
+                                      title: title,
                                       open: open).render(&block)
     end
 

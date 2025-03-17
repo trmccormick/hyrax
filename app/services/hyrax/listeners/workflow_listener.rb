@@ -7,17 +7,14 @@ module Hyrax
     # manages workflow accordingly.
     class WorkflowListener
       ##
-      # @note respects class attribute configuration at
-      #   {Hyrax::Actors::InitializeWorkflowActor.workflow_factory}, but falls
-      #   back on {Hyrax::Workflow::WorkflowFactory} to prepare for removal of
-      #   Actors
-      # @return [#create] default: {Hyrax::Workflow::WorkflowFactory}
-      def factory
-        if defined?(Hyrax::Actors::InitializeWorkflowActor)
-          Hyrax::Actors::InitializeWorkflowActor.workflow_factory
-        else
-          Hyrax::Workflow::WorkflowFactory
-        end
+      # @!attribute [rw] factory
+      #   @return [#create]
+      attr_accessor :factory
+
+      ##
+      # @param [#create] factory
+      def initialize(factory: Hyrax::Workflow::WorkflowFactory)
+        @factory = factory
       end
 
       ##
@@ -25,13 +22,26 @@ module Hyrax
       # @param [Dry::Events::Event] event
       # @return [void]
       def on_object_deposited(event)
-        return Rails.logger.warn("Skipping workflow initialization for #{event[:object]}; no user is given\n\t#{event}") if
+        event = event.to_h
+        return Hyrax.logger.warn("Skipping workflow initialization for #{event[:object]}; no user is given\n\t#{event}") if
           event[:user].blank?
 
         factory.create(event[:object], {}, event[:user])
       rescue Sipity::StateError, Sipity::ConversionError => err
         # don't error on known sipity error types; log instead
-        Rails.logger.error(err)
+        Hyrax.logger.error(err)
+      end
+
+      ##
+      # Called when 'object.deleted' event is published
+      # @param [Dry::Events::Event] event
+      # @return [void]
+      def on_object_deleted(event)
+        event = event.to_h
+        return unless event[:object]
+        gid = Hyrax::ValkyrieGlobalIdProxy.new(resource: event[:object]).to_global_id
+        return if gid.blank?
+        Sipity::Entity.where(proxy_for_global_id: gid.to_s).destroy_all
       end
     end
   end

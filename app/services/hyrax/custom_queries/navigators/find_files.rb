@@ -65,7 +65,7 @@ module Hyrax
         def find_thumbnail(file_set:)
           find_exactly_one_file_by_use(
             file_set: file_set,
-            use: Hyrax::FileMetadata::Use::THUMBNAIL
+            use: Hyrax::FileMetadata::Use::THUMBNAIL_IMAGE
           )
         end
 
@@ -80,10 +80,7 @@ module Hyrax
           files =
             query_service.custom_queries.find_many_file_metadata_by_use(resource: file_set, use: use)
 
-          raise Valkyrie::Persistence::ObjectNotFoundError, "FileSet #{file_set.id}'s #{use.fragment} is missing." if
-            files.empty?
-
-          files.first
+          files.first || raise(Valkyrie::Persistence::ObjectNotFoundError, "FileSet #{file_set.id}'s #{use.fragment} is missing.")
         end
       end
     end

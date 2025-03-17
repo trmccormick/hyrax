@@ -3,8 +3,16 @@ export class UploadedFiles {
   constructor(form, callback) {
     this.form = form
     this.element = $('#fileupload')
-    this.element.bind('fileuploadcompleted', callback)
-    this.element.bind('fileuploaddestroyed', callback)
+    this.uploadsInProgress = 0
+    this.element.on('fileuploadadded', (e, data) => {
+      this.uploadsInProgress += 1
+      callback(e, data)
+    })
+    this.element.on('fileuploadcompleted', (e, data) => {
+      this.uploadsInProgress -= 1
+      callback(e, data)
+    })
+    this.element.on('fileuploaddestroyed', callback)
   }
 
   get hasFileRequirement() {
@@ -13,7 +21,7 @@ export class UploadedFiles {
   }
 
   get inProgress() {
-    return this.element.fileupload('active') > 0
+    return this.uploadsInProgress > 0;
   }
 
   get hasFiles() {

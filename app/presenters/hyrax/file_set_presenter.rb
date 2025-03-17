@@ -20,7 +20,8 @@ module Hyrax
 
     # CurationConcern methods
     delegate :stringify_keys, :human_readable_type, :collection?, :image?, :video?,
-             :audio?, :pdf?, :office_document?, :representative_id, :to_s, to: :solr_document
+             :audio?, :pdf?, :office_document?, :representative_id, :to_s,
+             :extensions_and_mime_types, to: :solr_document
 
     # Methods used by blacklight helpers
     delegate :has?, :first, :fetch, to: :solr_document
@@ -105,6 +106,12 @@ module Hyrax
       current_ability.can?(:edit, id) || current_ability.can?(:destroy, id) || current_ability.can?(:download, id)
     end
 
+    ##
+    # @return [Array<String>]
+    def show_partials
+      ['show_details']
+    end
+
     private
 
     def link_presenter_class
@@ -112,13 +119,15 @@ module Hyrax
     end
 
     def fetch_parent_presenter
-      ids = Hyrax::SolrService.query("{!field f=member_ids_ssim}#{id}", fl: Hyrax.config.id_field)
+      ids = Hyrax::SolrService.query("{!field f=member_ids_ssim}#{id}", fl: Hyrax.config.id_field, rows: 1)
                               .map { |x| x.fetch(Hyrax.config.id_field) }
-      Hyrax.logger.warn("Couldn't find a parent work for FileSet: #{id}.") if ids.empty?
-      ids.each do |id|
-        doc = ::SolrDocument.find(id)
-        next if current_ability.can?(:edit, doc)
-        raise WorkflowAuthorizationException if doc.suppressed? && current_ability.can?(:read, doc)
+      if ids.empty?
+        Hyrax.logger.warn("Couldn't find a parent work for FileSet: #{id}.")
+      else
+        doc = ::SolrDocument.find(ids.first)
+        unless current_ability.can?(:edit, doc)
+          raise WorkflowAuthorizationException if doc.suppressed? && current_ability.can?(:read, doc)
+        end
       end
       Hyrax::PresenterFactory.build_for(ids: ids,
                                         presenter_class: WorkShowPresenter,

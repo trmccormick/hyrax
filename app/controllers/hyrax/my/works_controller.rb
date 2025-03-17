@@ -7,7 +7,7 @@ module Hyrax
         configure_blacklight do |config|
           config.search_builder_class = Hyrax::My::WorksSearchBuilder
           config.add_facet_field "admin_set_sim", limit: 5
-          config.add_facet_field "member_of_collections_ssim", limit: 5
+          config.add_facet_field "member_of_collections_ssim", limit: 1
         end
       end
       configure_facets
@@ -24,13 +24,16 @@ module Hyrax
         add_breadcrumb t(:'hyrax.admin.sidebar.works'), hyrax.my_works_path
         managed_works_count
         @create_work_presenter = create_work_presenter_class.new(current_user)
+        @admin_sets_for_select = admin_sets_for_select
         super
       end
 
       private
 
       def collections_service
-        Hyrax::CollectionsService.new(self)
+        cloned = clone
+        cloned.params = {}
+        Hyrax::CollectionsService.new(cloned)
       end
 
       def search_action_url(*args)
@@ -44,6 +47,25 @@ module Hyrax
 
       def managed_works_count
         @managed_works_count = Hyrax::Works::ManagedWorksService.managed_works_count(scope: self)
+      end
+
+      def admin_sets_for_select
+        source_ids = Hyrax::Collections::PermissionsService.source_ids_for_deposit(ability: current_ability, source_type: 'admin_set')
+
+        admin_sets_list = Hyrax.query_service.find_many_by_ids(ids: source_ids).map do |source|
+          [source.title.first, source.id]
+        end
+
+        # Sorts the default admin set to be first, then the rest by title.
+        admin_sets_list.sort do |a, b|
+          if Hyrax::AdminSetCreateService.default_admin_set?(id: a[1])
+            -1
+          elsif Hyrax::AdminSetCreateService.default_admin_set?(id: b[1])
+            1
+          else
+            a[0] <=> b[0]
+          end
+        end
       end
     end
   end

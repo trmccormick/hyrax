@@ -1,8 +1,11 @@
 # frozen_string_literal: true
+
+return if Hyrax.config.disable_wings
+
 require 'wings_helper'
 require 'wings/orm_converter'
 
-RSpec.describe Wings::OrmConverter do
+RSpec.describe Wings::OrmConverter, :active_fedora do
   describe '.to_valkyrie_resource_class' do
     context 'when given a ActiveFedora class (eg. a constant that responds to #properties)' do
       context 'for the returned object (e.g. a class)' do

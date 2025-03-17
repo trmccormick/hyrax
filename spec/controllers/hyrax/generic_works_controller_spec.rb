@@ -1,9 +1,8 @@
 # frozen_string_literal: true
 # This tests the Hyrax::WorksControllerBehavior module
-# which is included into .internal_test_app/app/controllers/hyrax/generic_works_controller.rb
 require 'hyrax/specs/spy_listener'
 
-RSpec.describe Hyrax::GenericWorksController do
+RSpec.describe Hyrax::GenericWorksController, :active_fedora do
   routes { Rails.application.routes }
   let(:main_app) { Rails.application.routes.url_helpers }
   let(:hyrax) { Hyrax::Engine.routes.url_helpers }
@@ -174,13 +173,16 @@ RSpec.describe Hyrax::GenericWorksController do
       end
 
       context "ttl" do
-        let(:presenter) { double }
+        let(:presenter) do
+          double("Presenter Double",
+                 export_as_ttl: 'ttl graph',
+                 'editor?': true,
+                 to_model: stub_model(GenericWork),
+                 'valkyrie_presenter?': false)
+        end
 
         before do
           allow(controller).to receive(:presenter).and_return(presenter)
-          allow(presenter).to receive(:export_as_ttl).and_return("ttl graph")
-          allow(presenter).to receive(:editor?).and_return(true)
-          allow(presenter).to receive(:to_model).and_return(stub_model(GenericWork))
         end
 
         it 'renders a turtle file' do
@@ -188,7 +190,7 @@ RSpec.describe Hyrax::GenericWorksController do
 
           expect(response).to be_successful
           expect(response.body).to eq "ttl graph"
-          expect(response.content_type).to eq 'text/turtle'
+          expect(response.media_type).to eq 'text/turtle'
         end
       end
     end

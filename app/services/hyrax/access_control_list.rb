@@ -48,14 +48,24 @@ module Hyrax
   #   # => #<Set: {#<Hyrax::Permission access_to=#<Valkyrie::ID:0x000055628b0ae0b8 @id="my_id"> agent="group/public" mode=:read>}>
   class AccessControlList
     ##
-    # @!attribute [rw] resource
+    # @!attribute [r] resource
     #   @return [Valkyrie::Resource]
     # @!attribute [r] persister
     #   @return [#save]
     # @!attribute [r] query_service
     #   @return [#find_inverse_references_by]
     attr_reader :persister, :query_service
-    attr_accessor :resource
+    attr_reader :resource
+
+    ##
+    # @param value [Valkyrie::Resource]
+    # @return [Valkyrie::Resource]
+    def resource=(value)
+      # We need to remove the memoization as the @resource has changed.
+      @change_set = nil
+      @access_control_model = nil
+      @resource = value
+    end
 
     ##
     # @api public
@@ -126,7 +136,7 @@ module Hyrax
     #
     # @return [Boolean]
     def pending_changes?
-      change_set.changed?
+      !change_set.resource.persisted? || change_set.changed?
     end
 
     ##
@@ -167,7 +177,14 @@ module Hyrax
       return true unless pending_changes?
 
       change_set.sync
-      persister.save(resource: change_set.resource)
+
+      # change_set.resource is a Hyrax::AccessControl
+      #
+      # We're setting the once fetched access_control_model to what was returned, so as to avoid
+      # a refetch
+      @access_control_model = persister.save(resource: change_set.resource)
+
+      # self.resource is a Hyrax::Resource
       Hyrax.publisher.publish('object.acl.updated', acl: self, result: :success)
       @change_set = nil
 
@@ -200,13 +217,14 @@ module Hyrax
 
       private
 
+      ##
+      # Returns the identifier used by ACLs to identify agents.
+      #
+      # This defaults to the `:agent_key`, but if that method doesn’t exist,
+      # `:user_key` will be used as a fallback.
       def id_for(agent:)
-        case agent
-        when Hyrax::Group
-          "#{Hyrax::Group.name_prefix}#{agent.name}"
-        else
-          agent.user_key.to_s
-        end
+        key = agent.try(:agent_key) || agent.user_key
+        key.to_s
       end
     end
 
@@ -250,7 +268,7 @@ module Hyrax
     ##
     # @api private
     def access_control_model
-      AccessControl.for(resource: resource, query_service: query_service)
+      @access_control_model ||= AccessControl.for(resource: resource, query_service: query_service)
     end
 
     ##

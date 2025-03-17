@@ -37,7 +37,7 @@ module Hyrax
       # @return [Boolean] true if destroy was successful
       def destroy(env)
         env.curation_concern.in_collection_ids.each do |id|
-          destination_collection = Hyrax.config.collection_class.find(id)
+          destination_collection = ::Collection.find(id)
           destination_collection.members.delete(env.curation_concern)
           destination_collection.update_index
         end
@@ -69,9 +69,13 @@ module Hyrax
       end
 
       def save(env, use_valkyrie: false)
-        return env.curation_concern.save unless use_valkyrie
+        # NOTE: You must call env.curation_concern.save before you attempt to coerce the curation
+        # concern into a valkyrie resource.
+        is_valid = env.curation_concern.save
+        return is_valid unless use_valkyrie
 
-        resource = valkyrie_save(resource: env.curation_concern.valkyrie_resource)
+        # don't run validations again on the converted object if they've already passed
+        resource = valkyrie_save(resource: env.curation_concern.valkyrie_resource, is_valid: is_valid)
 
         # we need to manually set the id and reload, because the actor stack requires
         # `env.curation_concern` to be the exact same instance throughout.
@@ -82,7 +86,7 @@ module Hyrax
         # for now, just hit the validation error again
         # later we should capture the _err.obj and pass it back
         # through the environment
-        env.curation_concern.save
+        is_valid
       end
 
       def apply_save_data_to_curation_concern(env)
@@ -115,9 +119,9 @@ module Hyrax
         attributes.select { |_, v| v.respond_to?(:select) && !v.respond_to?(:read) }
       end
 
-      def valkyrie_save(resource:)
+      def valkyrie_save(resource:, is_valid:)
         permissions = resource.permission_manager.acl.permissions
-        resource    = Hyrax.persister.save(resource: resource)
+        resource    = Hyrax.persister.save(resource: resource, perform_af_validation: !is_valid)
 
         resource.permission_manager.acl.permissions = permissions
         resource.permission_manager.acl.save
